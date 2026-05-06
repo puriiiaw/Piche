@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PM
+  VP
+}
+
+enum ProjectStatus {
+  ACTIVE
+  AT_RISK
+  PLANNING
+}
+
+enum LabourHoursSource {
+  MANUAL
+  DERIVED
+}
+
+enum TaskSource {
+  MANUAL
+  IMPORT
+}
+
+enum RequirementMode {
+  ROUNDED
+  EXACT
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  role          Role      @default(PM)
+  managerId     String?
+  manager       Manager?  @relation(fields: [managerId], references: [id])
+  accounts      Account[]
+  sessions      Session[]
+  auditEvents   AuditEvent[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Manager {
+  id       String    @id
+  name     String
+  email    String    @unique
+  users    User[]
+  projects Project[]
+}
+
+model CrewType {
+  id          String           @id
+  label       String
+  allocations CrewAllocation[]
+  createdAt   DateTime         @default(now())
+}
+
+model Project {
+  id                  String           @id
+  name                String
+  managerId           String
+  manager             Manager          @relation(fields: [managerId], references: [id])
+  area                String
+  cityName            String
+  startDate           DateTime
+  endDate             DateTime
+  status              ProjectStatus
+  dailyHoursPerWorker Float
+  avgHourlyRate       Float
+  maxAvailableWorkers Int
+  tasks               Task[]
+  scheduleImports     ScheduleImport[]
+  auditEvents         AuditEvent[]
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+}
+
+model Task {
+  id                    String             @id
+  projectId             String
+  project               Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name                  String
+  startDate             DateTime
+  endDate               DateTime
+  totalLabourHours      Float
+  labourHoursMissing    Boolean
+  labourHoursSource     LabourHoursSource
+  totalValue            Float
+  source                TaskSource
+  lastImportedAt        DateTime?
+  scheduleImportBatchId String?
+  crewRequirementMode   RequirementMode
+  notes                 String             @default("")
+  assumptions           String             @default("")
+  documentLink          String             @default("")
+  sortOrder             Int
+  allocations           CrewAllocation[]
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@index([projectId, sortOrder])
+}
+
+model CrewAllocation {
+  id         String   @id @default(cuid())
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  crewTypeId String
+  crewType   CrewType @relation(fields: [crewTypeId], references: [id], onDelete: Cascade)
+  units      Float
+
+  @@unique([taskId, crewTypeId])
+}
+
+model ScheduleImport {
+  id           String   @id
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fileName     String
+  fileUrl      String?
+  importedAt   DateTime
+  newTasks     Int
+  updatedTasks Int
+  skipped      Int
+  status       String
+  createdAt    DateTime @default(now())
+}
+
+model AuditEvent {
+  id        String   @id @default(cuid())
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+}

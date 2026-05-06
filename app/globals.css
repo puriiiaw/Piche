@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f5f6f8;
+  --foreground: #111827;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+@layer components {
+  .card {
+    @apply rounded-app border border-piche-line bg-white shadow-soft;
+  }
+
+  .btn {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-app px-4 text-sm font-bold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0;
+  }
+
+  .btn-primary {
+    @apply btn bg-piche-navy text-white shadow-soft;
+  }
+
+  .btn-secondary {
+    @apply btn bg-slate-100 text-slate-800;
+  }
+
+  .btn-gold {
+    @apply btn bg-piche-gold text-piche-navy;
+  }
+
+  .field {
+    @apply grid gap-1.5 text-sm font-bold text-slate-800;
+  }
+
+  .field input,
+  .field select,
+  .field textarea,
+  .input {
+    @apply min-h-10 rounded-app border border-piche-line bg-white px-3 text-base font-medium text-piche-ink outline-none focus:border-piche-gold focus:ring-4 focus:ring-piche-gold/20;
+  }
+
+  .eyebrow {
+    @apply text-xs font-black uppercase tracking-normal text-piche-goldDark;
+  }
+
+  .status-pill {
+    @apply inline-flex w-max items-center rounded-full px-2.5 py-1 text-xs font-black;
+  }
+}
