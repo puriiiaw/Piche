@@ -57,8 +57,12 @@ export function ProjectsView() {
             </thead>
             <tbody>
               {filtered.map((project) => (
-                <tr key={project.id} className={`border-t border-piche-line hover:bg-slate-50 ${activeProject?.id === project.id ? "bg-piche-gold/10" : ""}`}>
-                  <td className="p-3"><button className="text-left font-black text-piche-ink" onClick={() => state.setProject(project.id)}>{project.name}<span className="block text-sm font-medium text-piche-muted">{project.tasks.length} tasks</span></button></td>
+                <tr
+                  key={project.id}
+                  className={`cursor-pointer border-t border-piche-line hover:bg-slate-50 ${activeProject?.id === project.id ? "bg-piche-gold/10" : ""}`}
+                  onClick={() => state.setProject(project.id)}
+                >
+                  <td className="p-3"><strong className="text-piche-ink">{project.name}</strong><span className="block text-sm font-medium text-piche-muted">{project.tasks.length} tasks</span></td>
                   <td className="p-3">{state.managers.find((manager) => manager.id === project.managerId)?.name}</td>
                   <td className="p-3">{project.area}<span className="block text-sm text-piche-muted">{project.cityName}</span></td>
                   <td className="p-3">{formatDate(project.startDate)} - {formatDate(project.endDate)}</td>
@@ -66,8 +70,8 @@ export function ProjectsView() {
                   <td className="p-3"><StatusBadge status={project.status} /></td>
                   <td className="p-3">
                     <div className="flex justify-end gap-2">
-                      <button className="grid h-9 w-9 place-items-center rounded-app border border-piche-line" onClick={() => setEditingProject(project)} title="Edit project"><Edit size={16} /></button>
-                      <button className="grid h-9 w-9 place-items-center rounded-app border border-piche-line text-red-700" onClick={() => state.deleteProject(project.id)} title="Delete project"><Trash2 size={16} /></button>
+                      <button className="grid h-9 w-9 place-items-center rounded-app border border-piche-line" onClick={(event) => { event.stopPropagation(); setEditingProject(project); }} title="Edit project"><Edit size={16} /></button>
+                      <button className="grid h-9 w-9 place-items-center rounded-app border border-piche-line text-red-700" onClick={(event) => { event.stopPropagation(); state.deleteProject(project.id); }} title="Delete project"><Trash2 size={16} /></button>
                     </div>
                   </td>
                 </tr>

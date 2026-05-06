@@ -1,7 +1,5 @@
 "use client";
-
-import Image from "next/image";
-import { BarChart3, BriefcaseBusiness, ChevronLeft, LayoutDashboard, Plus, RefreshCcw, Settings, UserRound } from "lucide-react";
+import { BriefcaseBusiness, ChevronLeft, LayoutDashboard, Plus, Settings, UserRound } from "lucide-react";
 import { DashboardView } from "@/components/views/dashboard-view";
 import { ProjectsView } from "@/components/views/projects-view";
 import { SettingsView } from "@/components/views/settings-view";
@@ -17,7 +15,6 @@ export function LabourCurveApp() {
   const undo = useAppStore((state) => state.undo);
   const setView = useAppStore((state) => state.setView);
   const setRole = useAppStore((state) => state.setRole);
-  const resetDemo = useAppStore((state) => state.resetDemo);
   const restoreUndo = useAppStore((state) => state.restoreUndo);
 
   const navItems = [
@@ -30,28 +27,24 @@ export function LabourCurveApp() {
 
   return (
     <div className="grid min-h-screen grid-cols-[264px_minmax(0,1fr)] max-[840px]:grid-cols-1">
-      <aside className="sticky top-0 flex h-screen flex-col gap-8 bg-piche-navy px-4 py-7 text-white max-[840px]:static max-[840px]:h-auto max-[840px]:flex-row max-[840px]:items-center max-[840px]:overflow-x-auto">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="relative h-9 w-14 shrink-0 rounded-md bg-white p-1.5">
-            <Image src="/Logo.png" alt="Groupe Piche" fill className="object-contain p-1" priority />
-          </div>
-          <div className="min-w-0 leading-tight">
-            <strong className="block truncate">Labour Curve</strong>
-            <span className="text-sm text-slate-300">Management</span>
-          </div>
+      <aside className="sticky top-0 flex h-screen flex-col bg-[#111d26] text-white max-[840px]:static max-[840px]:h-auto max-[840px]:overflow-x-auto">
+        <div className="flex h-[112px] items-center justify-center border-b border-white/5 px-6">
+          <img src="/Logo.png" alt="Groupe Piche" width={160} height={80} className="h-20 w-40 object-contain" />
         </div>
 
-        <nav className="grid gap-2 max-[840px]:flex">
+        <nav className="grid max-[840px]:flex">
           {navItems.map((item) => {
             const Icon = item.icon;
+            const isActive = activeView === item.id;
             return (
               <button
                 key={item.id}
-                className={`flex min-h-11 items-center gap-3 rounded-app px-4 text-left font-semibold transition ${
-                  activeView === item.id ? "bg-white text-piche-navy" : "text-slate-300 hover:bg-white/10 hover:text-white"
+                className={`relative flex min-h-14 items-center gap-3 px-6 text-left text-sm font-semibold transition ${
+                  isActive ? "bg-white/10 text-piche-gold" : "text-slate-300 hover:bg-white/5 hover:text-piche-gold"
                 }`}
                 onClick={() => setView(item.id)}
               >
+                {isActive ? <span className="absolute left-0 top-0 h-full w-1 bg-piche-gold" /> : null}
                 <Icon size={18} />
                 <span>{item.label}</span>
               </button>
@@ -59,7 +52,7 @@ export function LabourCurveApp() {
           })}
         </nav>
 
-        <button className="mt-auto flex min-h-10 items-center gap-3 rounded-app px-4 text-slate-300 hover:bg-white/10 max-[840px]:hidden">
+        <button className="mx-4 mb-7 mt-auto flex min-h-10 items-center gap-3 rounded-app px-4 text-slate-300 hover:bg-white/10 max-[840px]:hidden">
           <ChevronLeft size={18} />
           Collapse
         </button>
@@ -83,10 +76,6 @@ export function LabourCurveApp() {
                 </button>
               ))}
             </div>
-            <button className="btn-secondary" onClick={() => { resetDemo(); toast.success("Demo data reset"); }}>
-              <RefreshCcw size={16} />
-              Reset demo
-            </button>
             <button className="btn-primary" onClick={() => setProjectDialogOpen(true)}>
               <Plus size={16} />
               Add Project
