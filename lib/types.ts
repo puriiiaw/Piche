@@ -1,4 +1,4 @@
-export type Role = "pm" | "vp";
+export type Role = "admin" | "pm" | "vp";
 export type ProjectStatus = "Active" | "At Risk" | "Planning";
 export type LabourHoursSource = "manual" | "derived";
 export type TaskSource = "manual" | "import";
@@ -88,7 +88,7 @@ export type PeriodPoint = {
 export type AppState = {
   role: Role;
   currentUserManagerId: string;
-  activeView: "dashboard" | "projects" | "settings";
+  activeView: "dashboard" | "projects" | "access" | "settings";
   activeProjectId: string;
   activeProjectTab: "overview" | "tasks" | "schedule" | "crew" | "imports";
   query: string;

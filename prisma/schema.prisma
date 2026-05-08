@@ -3,11 +3,13 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
+  ADMIN
   PM
   VP
 }
@@ -34,20 +36,22 @@ enum RequirementMode {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  passwordHash  String?
-  role          Role      @default(PM)
-  managerId     String?
-  manager       Manager?  @relation(fields: [managerId], references: [id])
-  accounts      Account[]
-  sessions      Session[]
-  auditEvents   AuditEvent[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                 String       @id @default(cuid())
+  name               String?
+  email              String?      @unique
+  username           String?      @unique
+  emailVerified      DateTime?
+  image              String?
+  passwordHash       String?
+  role               Role         @default(PM)
+  assignedProjectIds String[]     @default([])
+  managerId          String?
+  manager            Manager?     @relation(fields: [managerId], references: [id])
+  accounts           Account[]
+  sessions           Session[]
+  auditEvents        AuditEvent[]
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 }
 
 model Account {

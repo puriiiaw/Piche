@@ -51,7 +51,7 @@ export const useAppStore = create<AppStore>()(
       importFileName: "",
       setRole: (role) => set((state) => ({
         role,
-        activeView: role === "pm" && state.activeView === "settings" ? "dashboard" : state.activeView
+        activeView: role === "pm" && (state.activeView === "settings" || state.activeView === "access") ? "dashboard" : state.activeView
       })),
       setView: (activeView) => set({ activeView }),
       setProject: (activeProjectId) => set({ activeProjectId, activeView: "projects" }),
