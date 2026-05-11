@@ -4,6 +4,17 @@ import { getDb } from "@/lib/db";
 
 export const runtime = "nodejs";
 
+/** Resolve the real DB task id — handles the `projectId::displayId` prefix used by the serializer. */
+async function resolveTaskId(projectId: string, taskId: string): Promise<string | null> {
+  const db = getDb();
+  const fullId = `${projectId}::${taskId}`;
+  const task = await db.task.findFirst({
+    where: { id: { in: [fullId, taskId] }, projectId },
+    select: { id: true }
+  });
+  return task?.id ?? null;
+}
+
 export async function PATCH(request: Request, { params }: { params: { projectId: string; taskId: string } }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -11,9 +22,12 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
   const body = await request.json();
   const db = getDb();
 
+  const realId = await resolveTaskId(params.projectId, params.taskId);
+  if (!realId) return NextResponse.json({ error: "Task not found." }, { status: 404 });
+
   try {
     await db.task.update({
-      where: { id: params.taskId },
+      where: { id: realId },
       data: {
         ...(body.name !== undefined && { name: String(body.name) }),
         ...(body.startDate !== undefined && { startDate: new Date(body.startDate) }),
@@ -46,8 +60,11 @@ export async function DELETE(_request: Request, { params }: { params: { projectI
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const realId = await resolveTaskId(params.projectId, params.taskId);
+  if (!realId) return NextResponse.json({ error: "Task not found." }, { status: 404 });
+
   try {
-    await getDb().task.delete({ where: { id: params.taskId } });
+    await getDb().task.delete({ where: { id: realId } });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not delete task." }, { status: 500 });
