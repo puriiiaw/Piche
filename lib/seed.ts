@@ -1,11 +1,7 @@
 import { crewTypes } from "@/lib/constants";
 import type { AppState, AppUser, CrewAllocation, Manager, Project, Task } from "@/lib/types";
 
-export const managers: Manager[] = [
-  { id: "pm1", name: "Priya Manager", email: "priya@piche.local" },
-  { id: "pm2", name: "Marc LeBlanc", email: "marc@piche.local" },
-  { id: "pm3", name: "Sofia Chen", email: "sofia@piche.local" }
-];
+export const managers: Manager[] = [];
 
 function allocation(kind: "layout" | "stud" | "gypsum" | "joint" | "finish" | "general"): CrewAllocation {
   const base = Object.fromEntries(crewTypes.map((type) => [type.id, 0])) as CrewAllocation;
@@ -196,7 +192,7 @@ export const initialState: AppState = {
   query: "",
   statusFilter: "all",
   areaFilter: "all",
-  selectedProjectIds: seedProjects.map((project) => project.id),
+  selectedProjectIds: [],
   selectedCrewTypeIds: crewTypes.map((type) => type.id),
   dashboardArea: "all",
   dashboardWindow: "full",
@@ -209,11 +205,12 @@ export const initialState: AppState = {
   companyMaxCapacity: 90,
   scheduleGranularity: "week",
   selectedScheduleTaskId: "",
-  crewDisplayMode: "compact",
+  crewDisplayMode: "detailed",
   crewRequirementMode: "rounded",
   crewScenarioCapacity: null,
+  currentUserAssignedProjectIds: [],
   managers,
   users: seedUsers,
   crewTypes,
-  projects: seedProjects
+  projects: []
 };

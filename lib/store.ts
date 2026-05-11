@@ -35,6 +35,9 @@ type AppStore = AppState & {
   deleteUser: (userId: string) => void;
   restoreUndo: () => void;
   resetDemo: () => void;
+  setCurrentUserAssignedProjectIds: (ids: string[]) => void;
+  replaceProjects: (projects: Project[]) => void;
+  replaceManagers: (managers: AppState["managers"]) => void;
   replaceProjectFromImport: (project: Project) => void;
 };
 
@@ -100,7 +103,7 @@ export const useAppStore = create<AppStore>()(
             ...task,
             sortOrder: project.tasks.length + 1
           });
-          const tasks = [...project.tasks, nextTask];
+          const tasks = [...project.tasks, nextTask].sort((a, b) => a.startDate.localeCompare(b.startDate));
           return { ...project, tasks, startDate: minDate(tasks.map((item) => item.startDate)), endDate: maxDate(tasks.map((item) => item.endDate)) };
         })
       })),
@@ -172,8 +175,12 @@ export const useAppStore = create<AppStore>()(
         const assignedProjectIds = user.role === "vp" || user.role === "admin"
           ? state.projects.map((project) => project.id)
           : user.assignedProjectIds || [];
+        const nextManagers = user.role === "pm"
+          ? [...state.managers, { id, name: user.name, email: user.username || "" }]
+          : state.managers;
         return {
-          users: [...state.users, { ...user, id, assignedProjectIds }]
+          users: [...state.users, { ...user, id, assignedProjectIds }],
+          managers: nextManagers
         };
       }),
       updateUserAccess: (userId, assignedProjectIds) => set((state) => ({
@@ -199,8 +206,17 @@ export const useAppStore = create<AppStore>()(
         };
       }),
       resetDemo: () => set({ ...initialState, undo: null }),
+      setCurrentUserAssignedProjectIds: (ids) => set({ currentUserAssignedProjectIds: ids }),
+      replaceProjects: (projects) => set((state) => ({
+        projects: projects.map((p) => ({ ...p, tasks: [...p.tasks].sort((a, b) => a.startDate.localeCompare(b.startDate)) })),
+        selectedProjectIds: projects.map((project) => project.id),
+        activeProjectId: projects.some((project) => project.id === state.activeProjectId) ? state.activeProjectId : projects[0]?.id || ""
+      })),
+      replaceManagers: (managers) => set({ managers }),
       replaceProjectFromImport: (project) => set((state) => ({
-        projects: state.projects.map((item) => item.id === project.id ? project : item),
+        projects: state.projects.map((item) => item.id === project.id
+          ? { ...project, tasks: [...project.tasks].sort((a, b) => a.startDate.localeCompare(b.startDate)) }
+          : item),
         selectedProjectIds: [...new Set([...state.selectedProjectIds, project.id])],
         activeProjectId: project.id
       }))
@@ -220,6 +236,7 @@ export const useAppStore = create<AppStore>()(
 function sanitizeStateForPersistence(state: AppStore) {
   return {
     activeView: state.activeView,
+    activeProjectId: state.activeProjectId,
     activeProjectTab: state.activeProjectTab,
     dashboardWindow: state.dashboardWindow,
     dashboardArea: state.dashboardArea,
@@ -259,7 +276,8 @@ function sanitizeHydratedState(persisted: unknown): Partial<AppStore> {
     ...safeNext
   } = next;
   return {
-    ...safeNext
+    ...safeNext,
+    crewDisplayMode: "detailed"
   };
 }
 

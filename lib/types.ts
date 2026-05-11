@@ -110,6 +110,7 @@ export type AppState = {
   crewDisplayMode: "compact" | "detailed";
   crewRequirementMode: RequirementMode;
   crewScenarioCapacity: number | null;
+  currentUserAssignedProjectIds: string[];
   managers: Manager[];
   users: AppUser[];
   crewTypes: CrewType[];

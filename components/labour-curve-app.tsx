@@ -17,6 +17,7 @@ type SessionUser = {
   name?: string | null;
   role: "ADMIN" | "PM" | "VP";
   username: string;
+  assignedProjectIds: string[];
 };
 
 const ROLE_LABEL: Record<SessionUser["role"], string> = {
@@ -34,16 +35,47 @@ const STORE_ROLE: Record<SessionUser["role"], "admin" | "pm" | "vp"> = {
 export function LabourCurveApp({ user }: { user: SessionUser }) {
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
 
   const activeView = useAppStore((state) => state.activeView);
   const undo = useAppStore((state) => state.undo);
   const setView = useAppStore((state) => state.setView);
   const setRole = useAppStore((state) => state.setRole);
+  const replaceProjects = useAppStore((state) => state.replaceProjects);
+  const replaceManagers = useAppStore((state) => state.replaceManagers);
+  const setCurrentUserAssignedProjectIds = useAppStore((state) => state.setCurrentUserAssignedProjectIds);
   const restoreUndo = useAppStore((state) => state.restoreUndo);
 
   useEffect(() => {
     setRole(STORE_ROLE[user.role]);
-  }, [setRole, user.role]);
+    if (user.role === "PM") {
+      setCurrentUserAssignedProjectIds(user.assignedProjectIds);
+    }
+  }, [setRole, setCurrentUserAssignedProjectIds, user.role, user.assignedProjectIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/projects")
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Could not load projects.");
+        return payload;
+      })
+      .then((payload) => {
+        if (!cancelled) {
+          replaceProjects(payload.projects);
+          if (payload.managers) replaceManagers(payload.managers);
+          setProjectsLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Could not load projects from Supabase.");
+        if (!cancelled) setProjectsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [replaceProjects]);
 
   const isAdmin = user.role === "ADMIN";
   const canAddProject = isAdmin;
@@ -72,8 +104,9 @@ export function LabourCurveApp({ user }: { user: SessionUser }) {
     .slice(0, 2);
 
   return (
-    <div className={`grid min-h-screen ${sidebarCollapsed ? "grid-cols-[72px_minmax(0,1fr)]" : "grid-cols-[264px_minmax(0,1fr)]"} max-[840px]:grid-cols-1 transition-all`}>
-      <aside className="sticky top-0 flex h-screen flex-col bg-[#111d26] text-white max-[840px]:static max-[840px]:h-auto max-[840px]:overflow-x-auto">
+    <div className={`grid min-h-screen ${sidebarCollapsed ? "grid-cols-[72px_minmax(0,1fr)]" : "grid-cols-[264px_minmax(0,1fr)]"} max-[840px]:block transition-all`}>
+      {/* Desktop sidebar — hidden on mobile */}
+      <aside className="sticky top-0 flex h-screen flex-col bg-[#111d26] text-white max-[840px]:hidden">
         <div className={`flex h-[112px] items-center justify-center border-b border-white/5 px-6 ${sidebarCollapsed ? "px-2" : ""}`}>
           {!sidebarCollapsed ? (
             <Image src="/Logo.png" alt="Groupe Piche" width={160} height={80} priority className="h-20 w-40 object-contain" />
@@ -82,7 +115,7 @@ export function LabourCurveApp({ user }: { user: SessionUser }) {
           )}
         </div>
 
-        <nav className="grid max-[840px]:flex">
+        <nav className="grid">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeView === item.id;
@@ -126,7 +159,7 @@ export function LabourCurveApp({ user }: { user: SessionUser }) {
         </div>
 
         <button
-          className="mx-4 mb-4 flex min-h-10 items-center gap-3 rounded-app px-4 text-slate-300 hover:bg-white/10 max-[840px]:hidden"
+          className="mx-4 mb-4 flex min-h-10 items-center gap-3 rounded-app px-4 text-slate-300 hover:bg-white/10"
           onClick={() => setSidebarCollapsed((value) => !value)}
         >
           <ChevronLeft size={18} className={`transition-transform ${sidebarCollapsed ? "rotate-180" : ""}`} />
@@ -134,20 +167,20 @@ export function LabourCurveApp({ user }: { user: SessionUser }) {
         </button>
       </aside>
 
-      <main className="min-w-0">
-        <header className="sticky top-0 z-20 flex min-h-22 items-center justify-between gap-4 border-b border-piche-line bg-white/90 px-8 py-5 backdrop-blur max-[840px]:static max-[840px]:flex-col max-[840px]:items-stretch">
+      <main className="min-w-0 max-[840px]:pb-24">
+        <header className="sticky top-0 z-20 flex min-h-[72px] items-center justify-between gap-4 border-b border-piche-line bg-white/90 px-8 py-4 backdrop-blur max-[840px]:px-4 max-[840px]:py-3">
           <div>
-            <p className="eyebrow">{ROLE_LABEL[user.role]} access</p>
-            <h1 className="text-3xl font-black text-piche-ink">{viewTitle[activeView as View] || "Dashboard"}</h1>
+            <p className="eyebrow hidden max-[840px]:hidden">{ROLE_LABEL[user.role]} access</p>
+            <h1 className="text-2xl font-black text-piche-ink max-[840px]:text-xl">{viewTitle[activeView as View] || "Dashboard"}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {canAddProject && activeView !== "access" ? (
               <button className="btn-primary" onClick={() => setProjectDialogOpen(true)}>
                 <Plus size={16} />
-                Add Project
+                <span className="max-[480px]:hidden">Add Project</span>
               </button>
             ) : null}
-            <div className="grid h-11 w-11 place-items-center rounded-full bg-piche-navy text-sm font-black text-white" title={user.name || user.username}>
+            <div className="grid h-10 w-10 place-items-center rounded-full bg-piche-navy text-sm font-black text-white" title={user.name || user.username}>
               {initials}
             </div>
           </div>
@@ -160,6 +193,31 @@ export function LabourCurveApp({ user }: { user: SessionUser }) {
           {activeView === "settings" && isAdmin && <SettingsView />}
         </section>
       </main>
+
+      {/* Mobile bottom tab bar — hidden on desktop */}
+      <nav className="fixed bottom-0 left-0 right-0 z-30 hidden max-[840px]:flex border-t border-white/10 bg-[#111d26]">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeView === item.id;
+          return (
+            <button
+              key={item.id}
+              className={`flex flex-1 flex-col items-center justify-center gap-1 py-3 text-[11px] font-semibold transition min-h-[56px] ${isActive ? "text-piche-gold" : "text-slate-400"}`}
+              onClick={() => setView(item.id)}
+            >
+              <Icon size={20} />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+        <button
+          className="flex flex-1 flex-col items-center justify-center gap-1 py-3 text-[11px] font-semibold text-slate-400 min-h-[56px]"
+          onClick={() => signOut({ callbackUrl: "/login" })}
+        >
+          <LogOut size={20} />
+          <span>Sign out</span>
+        </button>
+      </nav>
 
       <ProjectDialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen} />
 

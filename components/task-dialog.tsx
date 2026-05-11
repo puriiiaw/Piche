@@ -47,10 +47,24 @@ export function TaskDialog({ open, onOpenChange, projectId, task }: TaskDialogPr
     <Dialog open={open} onOpenChange={onOpenChange} title={task ? "Edit Task" : "Add Task"} description="Enter task dates and labour. Hours can be entered directly or derived from total value.">
       <form
         className="grid gap-4"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault();
-          if (task) updateTask(projectId, task.id, form as Partial<Task>);
-          else createTask(projectId, form as never);
+          if (task) {
+            await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(form)
+            });
+            updateTask(projectId, task.id, form as Partial<Task>);
+          } else {
+            const response = await fetch(`/api/projects/${projectId}/tasks`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(form)
+            });
+            const result = await response.json();
+            createTask(projectId, result.task ?? (form as never));
+          }
           onOpenChange(false);
         }}
       >

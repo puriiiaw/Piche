@@ -17,7 +17,7 @@ export function Dialog({ open, title, description, children, onOpenChange, wide 
 
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-slate-950/45 p-4">
-      <div className={`max-h-[calc(100vh-2rem)] w-full overflow-auto rounded-app bg-white p-6 shadow-2xl ${wide ? "max-w-5xl" : "max-w-xl"}`}>
+      <div className={`max-h-[calc(100vh-2rem)] w-full overflow-auto rounded-app bg-white p-6 shadow-2xl ${wide ? "max-w-[min(1500px,calc(100vw-3rem))]" : "max-w-xl"}`}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-2xl font-black text-piche-ink">{title}</h2>

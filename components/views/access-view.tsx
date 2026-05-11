@@ -3,8 +3,18 @@
 import { useEffect, useState, useTransition } from "react";
 import { KeyRound, Plus, ShieldCheck, Trash2, UserRound, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { createUser, deleteUser, getUsers, resetUserPassword, updateUserProjects } from "@/app/actions/users";
+import { createUser, deleteUser, getUsers, resetUserPassword, updateUser, updateUserProjects } from "@/app/actions/users";
 import { useAppStore } from "@/lib/store";
+
+async function refreshManagers(replaceManagers: (m: { id: string; name: string; email: string }[]) => void) {
+  try {
+    const res = await fetch("/api/projects");
+    if (res.ok) {
+      const payload = await res.json();
+      if (payload.managers) replaceManagers(payload.managers);
+    }
+  } catch { /* silent */ }
+}
 
 type UserRow = {
   id: string;
@@ -40,10 +50,13 @@ const emptyForm = (): CreateForm => ({
 
 export function AccessView({ currentUserId }: { currentUserId: string }) {
   const projects = useAppStore((s) => s.projects);
+  const replaceManagers = useAppStore((s) => s.replaceManagers);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showReset, setShowReset] = useState<UserRow | null>(null);
+  const [showEdit, setShowEdit] = useState<UserRow | null>(null);
+  const [editForm, setEditForm] = useState<{ name: string; role: "ADMIN" | "PM" | "VP"; assignedProjectIds: string[] }>({ name: "", role: "PM", assignedProjectIds: [] });
   const [form, setForm] = useState<CreateForm>(emptyForm());
   const [resetPw, setResetPw] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -71,6 +84,7 @@ export function AccessView({ currentUserId }: { currentUserId: string }) {
         setShowCreate(false);
         setForm(emptyForm());
         await loadUsers();
+        await refreshManagers(replaceManagers);
       } catch (err: any) {
         toast.error(err.message || "Failed to create user.");
       }
@@ -84,6 +98,7 @@ export function AccessView({ currentUserId }: { currentUserId: string }) {
         await deleteUser(user.id);
         toast.success("Account deleted.");
         await loadUsers();
+        await refreshManagers(replaceManagers);
       } catch (err: any) {
         toast.error(err.message || "Failed to delete user.");
       }
@@ -184,6 +199,13 @@ export function AccessView({ currentUserId }: { currentUserId: string }) {
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center justify-end gap-2">
+                      <button
+                        className="flex items-center gap-1.5 rounded-lg border border-piche-line px-3 py-1.5 text-xs font-bold text-piche-muted hover:border-piche-gold hover:text-piche-goldDark"
+                        onClick={() => { setShowEdit(u); setEditForm({ name: u.name || "", role: u.role, assignedProjectIds: u.assignedProjectIds }); }}
+                        title="Edit user"
+                      >
+                        <UserRound size={13} /> Edit
+                      </button>
                       <button
                         className="flex items-center gap-1.5 rounded-lg border border-piche-line px-3 py-1.5 text-xs font-bold text-piche-muted hover:border-piche-gold hover:text-piche-goldDark"
                         onClick={() => { setShowReset(u); setResetPw(""); }}
@@ -307,6 +329,76 @@ export function AccessView({ currentUserId }: { currentUserId: string }) {
                 <button type="submit" disabled={isPending} className="btn-primary flex-1">
                   {isPending ? "Creating…" : "Create Account"}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit user modal ── */}
+      {showEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-piche-line px-6 py-5">
+              <h3 className="text-lg font-black text-piche-ink">Edit User</h3>
+              <button onClick={() => setShowEdit(null)} className="text-slate-400 hover:text-piche-ink"><X size={20} /></button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                startTransition(async () => {
+                  try {
+                    await updateUser(showEdit.id, editForm);
+                    toast.success("User updated.");
+                    setShowEdit(null);
+                    await loadUsers();
+                    await refreshManagers(replaceManagers);
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to update user.");
+                  }
+                });
+              }}
+              className="grid gap-4 p-6"
+            >
+              <label className="field">
+                <span>Full Name</span>
+                <input className="input" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} required />
+              </label>
+              <div className="field">
+                <span>Role</span>
+                <div className="flex gap-2">
+                  {(["PM", "VP", "ADMIN"] as const).map((r) => (
+                    <button key={r} type="button"
+                      className={`flex-1 rounded-lg border py-2 text-sm font-black transition ${editForm.role === r ? "border-piche-gold bg-piche-gold/10 text-piche-goldDark" : "border-piche-line text-slate-500 hover:border-piche-gold/50"}`}
+                      onClick={() => setEditForm((f) => ({ ...f, role: r, assignedProjectIds: [] }))}
+                    >{ROLE_LABEL[r]}</button>
+                  ))}
+                </div>
+              </div>
+              {editForm.role === "PM" && projects.length > 0 && (
+                <div className="field">
+                  <span>Assigned Projects</span>
+                  <div className="grid gap-1.5 rounded-lg border border-piche-line p-3 max-h-40 overflow-auto">
+                    {projects.map((p) => (
+                      <label key={p.id} className="flex cursor-pointer items-center gap-2.5 text-sm font-semibold">
+                        <input type="checkbox" className="h-4 w-4 accent-piche-gold"
+                          checked={editForm.assignedProjectIds.includes(p.id)}
+                          onChange={() => setEditForm((f) => ({
+                            ...f,
+                            assignedProjectIds: f.assignedProjectIds.includes(p.id)
+                              ? f.assignedProjectIds.filter((id) => id !== p.id)
+                              : [...f.assignedProjectIds, p.id]
+                          }))}
+                        />
+                        {p.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="mt-2 flex gap-3">
+                <button type="button" className="btn-secondary flex-1" onClick={() => setShowEdit(null)}>Cancel</button>
+                <button type="submit" disabled={isPending} className="btn-primary flex-1">{isPending ? "Saving…" : "Save Changes"}</button>
               </div>
             </form>
           </div>

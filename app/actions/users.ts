@@ -44,7 +44,8 @@ export async function createUser(data: {
 
   const passwordHash = await hash(data.password, 12);
 
-  const user = await getDb().user.create({
+  const db = getDb();
+  const user = await db.user.create({
     data: {
       name: data.name.trim(),
       username,
@@ -54,6 +55,15 @@ export async function createUser(data: {
     },
     select: { id: true, name: true, username: true, role: true, assignedProjectIds: true, createdAt: true },
   });
+
+  // Keep Manager table in sync — projects FK requires a Manager record for PM users
+  if (data.role === "PM") {
+    await db.manager.upsert({
+      where: { id: user.id },
+      update: { name: data.name.trim(), email: `${username}@piche.ca` },
+      create: { id: user.id, name: data.name.trim(), email: `${username}@piche.ca` }
+    });
+  }
 
   revalidatePath("/");
   return user;
@@ -74,8 +84,47 @@ export async function deleteUser(userId: string) {
   const currentId = session?.user?.id;
   requireAdmin((session?.user as any)?.role);
   if (userId === currentId) throw new Error("You cannot delete your own account.");
-  await getDb().user.delete({ where: { id: userId } });
+  const db = getDb();
+  await db.user.delete({ where: { id: userId } });
+  // Clean up Manager record if it exists (PM users have one)
+  await db.manager.deleteMany({ where: { id: userId } });
   revalidatePath("/");
+}
+
+export async function updateUser(userId: string, data: {
+  name: string;
+  role: "ADMIN" | "PM" | "VP";
+  assignedProjectIds: string[];
+}) {
+  const session = await auth();
+  requireAdmin((session?.user as any)?.role);
+  if (!data.name.trim()) throw new Error("Name is required.");
+
+  const db = getDb();
+  const user = await db.user.update({
+    where: { id: userId },
+    data: {
+      name: data.name.trim(),
+      role: data.role,
+      assignedProjectIds: data.role === "PM" ? data.assignedProjectIds : [],
+    },
+    select: { id: true, name: true, username: true, role: true, assignedProjectIds: true, createdAt: true },
+  });
+
+  // Sync Manager table
+  if (data.role === "PM") {
+    await db.manager.upsert({
+      where: { id: userId },
+      update: { name: data.name.trim() },
+      create: { id: userId, name: data.name.trim(), email: `${user.username}@piche.ca` }
+    });
+  } else {
+    // If role changed away from PM, remove from Manager table
+    await db.manager.deleteMany({ where: { id: userId } });
+  }
+
+  revalidatePath("/");
+  return user;
 }
 
 export async function resetUserPassword(userId: string, newPassword: string) {

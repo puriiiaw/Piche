@@ -2,11 +2,11 @@ import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
 import { crewTypes } from "../lib/constants";
 import { managers, seedProjects } from "../lib/seed";
+import type { Task } from "../lib/types";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  // Seed managers
   for (const manager of managers) {
     await prisma.manager.upsert({
       where: { id: manager.id },
@@ -15,7 +15,6 @@ async function main() {
     });
   }
 
-  // Seed crew types
   for (const crewType of crewTypes) {
     await prisma.crewType.upsert({
       where: { id: crewType.id },
@@ -24,7 +23,6 @@ async function main() {
     });
   }
 
-  // Seed projects
   for (const project of seedProjects) {
     await prisma.project.upsert({
       where: { id: project.id },
@@ -54,16 +52,58 @@ async function main() {
         managerId: project.managerId,
       },
     });
+
+    for (const task of project.tasks) {
+      await prisma.task.upsert({
+        where: { id: task.id },
+        update: taskPayload(project.id, task),
+        create: {
+          id: task.id,
+          ...taskPayload(project.id, task),
+        },
+      });
+
+      for (const [crewTypeId, units] of Object.entries(task.crewAllocation)) {
+        await prisma.crewAllocation.upsert({
+          where: { taskId_crewTypeId: { taskId: task.id, crewTypeId } },
+          update: { units },
+          create: { taskId: task.id, crewTypeId, units },
+        });
+      }
+    }
+
+    for (const item of project.scheduleImports) {
+      await prisma.scheduleImport.upsert({
+        where: { id: item.id },
+        update: {
+          fileName: item.fileName,
+          importedAt: new Date(item.importedAt),
+          newTasks: item.newTasks,
+          updatedTasks: item.updatedTasks,
+          skipped: item.skipped,
+          status: item.status,
+        },
+        create: {
+          id: item.id,
+          projectId: project.id,
+          fileName: item.fileName,
+          importedAt: new Date(item.importedAt),
+          newTasks: item.newTasks,
+          updatedTasks: item.updatedTasks,
+          skipped: item.skipped,
+          status: item.status,
+        },
+      });
+    }
   }
 
-  // ── Seed admin user ──
   const adminUsername = "admin";
   const adminPassword = "PicheAdmin2026!";
   const adminHash = await hash(adminPassword, 12);
 
   await prisma.user.upsert({
     where: { username: adminUsername },
-    update: {},   // don't overwrite an existing admin's password on re-seed
+    update: {},
     create: {
       name: "Piche Admin",
       username: adminUsername,
@@ -73,7 +113,28 @@ async function main() {
     },
   });
 
-  console.log("✅ Seeded. Admin login → username: admin  password: PicheAdmin2026!");
+  console.log("Seeded. Admin login -> username: admin  password: PicheAdmin2026!");
+}
+
+function taskPayload(projectId: string, task: Task) {
+  return {
+    projectId,
+    name: task.name,
+    startDate: new Date(task.startDate),
+    endDate: new Date(task.endDate),
+    totalLabourHours: task.totalLabourHours,
+    labourHoursMissing: task.labourHoursMissing,
+    labourHoursSource: task.labourHoursSource === "derived" ? "DERIVED" as const : "MANUAL" as const,
+    totalValue: task.totalValue,
+    source: task.source === "excel_import" ? "EXCEL_IMPORT" as const : "MANUAL" as const,
+    lastImportedAt: task.lastImportedAt ? new Date(task.lastImportedAt) : null,
+    scheduleImportBatchId: task.scheduleImportBatchId || null,
+    crewRequirementMode: task.crewRequirementMode === "exact" ? "EXACT" as const : "ROUNDED" as const,
+    notes: task.notes,
+    assumptions: task.assumptions,
+    documentLink: task.documentLink,
+    sortOrder: task.sortOrder,
+  };
 }
 
 function mapStatus(status: string) {

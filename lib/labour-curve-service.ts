@@ -23,7 +23,7 @@ export type LabourCurvePayload = {
   thisWeekPeak: number;
   capacity: number;
   projectMix: { id: string; name: string; totalHours: number }[];
-  nextThreeWeeks: { startLabel: string; endLabel: string; peakCrew: number }[];
+  nextThreeWeeks: { startLabel: string; endLabel: string; startIso: string; endIso: string; peakCrew: number }[];
 };
 
 const cache = new Map<string, { expiresAt: number; payload: LabourCurvePayload }>();
@@ -74,6 +74,8 @@ export function buildCompanyLabourCurvePayload({
     nextThreeWeeks: nextThreeWeekPeaks(projects).map((week) => ({
       startLabel: week.startLabel,
       endLabel: week.endLabel,
+      startIso: week.startIso,
+      endIso: week.endIso,
       peakCrew: week.peak?.crew ?? 0
     }))
   };
@@ -168,8 +170,7 @@ function buildChartData(projects: Project[], granularity: Granularity, valueMode
     const row: Record<string, string | number> = {
       period: period.label,
       sort: period.sort,
-      "Total Demand": 0,
-      Capacity: capacity
+      "Total Demand": 0
     };
 
     projects.forEach((project) => {
