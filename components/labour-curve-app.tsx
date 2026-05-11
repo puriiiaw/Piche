@@ -45,6 +45,7 @@ export function LabourCurveApp({ user }: { user: SessionUser }) {
   const replaceManagers = useAppStore((state) => state.replaceManagers);
   const setCurrentUserAssignedProjectIds = useAppStore((state) => state.setCurrentUserAssignedProjectIds);
   const restoreUndo = useAppStore((state) => state.restoreUndo);
+  const dismissUndo = useAppStore((state) => state.dismissUndo);
 
   useEffect(() => {
     setRole(STORE_ROLE[user.role]);
@@ -52,6 +53,13 @@ export function LabourCurveApp({ user }: { user: SessionUser }) {
       setCurrentUserAssignedProjectIds(user.assignedProjectIds);
     }
   }, [setRole, setCurrentUserAssignedProjectIds, user.role, user.assignedProjectIds]);
+
+  // Auto-dismiss undo toast after 5 seconds
+  useEffect(() => {
+    if (!undo) return;
+    const timer = setTimeout(() => dismissUndo(), 5000);
+    return () => clearTimeout(timer);
+  }, [undo, dismissUndo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,12 +234,44 @@ export function LabourCurveApp({ user }: { user: SessionUser }) {
           <span className="font-semibold">{undo.message}</span>
           <button
             className="rounded-md border border-white/20 px-3 py-1.5 text-sm font-black"
-            onClick={() => {
+            onClick={async () => {
+              const snapshot = undo;
               restoreUndo();
+              // Re-create deleted task in the database so it survives a page refresh
+              if (snapshot.type === "task") {
+                const { projectId, item: task } = snapshot;
+                await fetch(`/api/projects/${projectId}/tasks`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    id: task.id,
+                    name: task.name,
+                    startDate: task.startDate,
+                    endDate: task.endDate,
+                    totalLabourHours: task.totalLabourHours,
+                    labourHoursMissing: task.labourHoursMissing,
+                    labourHoursSource: task.labourHoursSource,
+                    totalValue: task.totalValue,
+                    crewAllocation: task.crewAllocation,
+                    notes: task.notes,
+                    assumptions: task.assumptions,
+                    documentLink: task.documentLink,
+                    sortOrder: task.sortOrder,
+                    crewRequirementMode: task.crewRequirementMode
+                  })
+                }).catch(() => {});
+              }
               toast.success("Restored");
             }}
           >
             Undo
+          </button>
+          <button
+            className="ml-1 rounded-md px-2 py-1.5 text-sm text-white/60 hover:text-white"
+            onClick={dismissUndo}
+            title="Dismiss"
+          >
+            ✕
           </button>
         </div>
       ) : null}

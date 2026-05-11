@@ -47,7 +47,7 @@ export async function DELETE(_request: Request, { params }: { params: { projectI
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    await getDb().task.delete({ where: { id: params.taskId, projectId: params.projectId } });
+    await getDb().task.delete({ where: { id: params.taskId } });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not delete task." }, { status: 500 });

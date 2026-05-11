@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ButtonHTMLAttributes, type CSSProperties } from "react";
+import { toast } from "sonner";
 import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -646,7 +647,15 @@ function TaskRow({
       <td className="p-3">
         <div className="flex justify-end gap-2">
           <button className="grid h-9 w-9 place-items-center rounded-app border border-piche-line" onClick={onEdit}><Edit size={16} /></button>
-          <button className="grid h-9 w-9 place-items-center rounded-app border border-piche-line text-red-700" onClick={async () => { await fetch(`/api/projects/${project.id}/tasks/${task.id}`, { method: "DELETE" }); state.deleteTask(project.id, task.id); }}><Trash2 size={16} /></button>
+          <button className="grid h-9 w-9 place-items-center rounded-app border border-piche-line text-red-700" onClick={async () => {
+            const res = await fetch(`/api/projects/${project.id}/tasks/${task.id}`, { method: "DELETE" });
+            if (res.ok) {
+              state.deleteTask(project.id, task.id);
+            } else {
+              const body = await res.json().catch(() => ({}));
+              toast.error(body.error || "Could not delete task. Please try again.");
+            }
+          }}><Trash2 size={16} /></button>
         </div>
       </td>
     </tr>

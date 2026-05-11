@@ -34,6 +34,7 @@ type AppStore = AppState & {
   updateUserAccess: (userId: string, assignedProjectIds: string[]) => void;
   deleteUser: (userId: string) => void;
   restoreUndo: () => void;
+  dismissUndo: () => void;
   resetDemo: () => void;
   setCurrentUserAssignedProjectIds: (ids: string[]) => void;
   replaceProjects: (projects: Project[]) => void;
@@ -205,6 +206,7 @@ export const useAppStore = create<AppStore>()(
           undo: null
         };
       }),
+      dismissUndo: () => set({ undo: null }),
       resetDemo: () => set({ ...initialState, undo: null }),
       setCurrentUserAssignedProjectIds: (ids) => set({ currentUserAssignedProjectIds: ids }),
       replaceProjects: (projects) => set((state) => ({
