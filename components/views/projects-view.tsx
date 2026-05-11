@@ -697,7 +697,8 @@ function ScheduleTab({ project, tasks }: { project: Project; tasks: Task[] }) {
     [exportDuration, project, exportCustomStart, exportCustomEnd]
   );
   const exportGranularity: ScheduleGranularity = autoGranularity(exportDates.startDate, exportDates.endDate);
-  const pageCount = estimatePageCount(exportDates.startDate, exportDates.endDate, exportGranularity, exportOrientation);
+  const exportVisibleTaskCount = tasks.filter((t) => t.endDate >= exportDates.startDate && t.startDate <= exportDates.endDate).length;
+  const pageCount = estimatePageCount(exportDates.startDate, exportDates.endDate, exportGranularity, exportOrientation, exportVisibleTaskCount);
 
   const handleExportSchedule = async () => {
     setExporting(true);
@@ -839,10 +840,12 @@ function ScheduleTab({ project, tasks }: { project: Project; tasks: Task[] }) {
                 <strong className="text-piche-ink">{exportDates.startDate} → {exportDates.endDate}</strong>
                 <span>Granularity:</span>
                 <strong className="text-piche-ink capitalize">{exportGranularity}</strong>
-                <span>Est. Gantt pages:</span>
-                <strong className="text-piche-ink">{pageCount} + 1 summary</strong>
+                <span>Format:</span>
+                <strong className="text-piche-ink">A3 {exportOrientation}</strong>
+                <span>Est. pages:</span>
+                <strong className="text-piche-ink">~{pageCount} (incl. summary)</strong>
                 <span>Tasks included:</span>
-                <strong className="text-piche-ink">{tasks.filter((t) => t.endDate >= exportDates.startDate && t.startDate <= exportDates.endDate).length} of {tasks.length}</strong>
+                <strong className="text-piche-ink">{exportVisibleTaskCount} of {tasks.length}</strong>
               </div>
             </div>
 
