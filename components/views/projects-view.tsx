@@ -666,19 +666,26 @@ function TaskRow({
 
 type ExportDuration = "2w" | "1m" | "3m" | "full" | "custom";
 
-function getExportDates(duration: ExportDuration, project: Project, customStart: string, customEnd: string): { startDate: string; endDate: string } {
-  const todayIso = new Date().toISOString().slice(0, 10);
+function getExportDates(duration: ExportDuration, project: Project, customStart: string, customEnd: string, tasks: Task[]): { startDate: string; endDate: string } {
+  // Always start from the earliest task, never from today
+  const earliestStart = tasks.length > 0
+    ? tasks.reduce((min, t) => (t.startDate < min ? t.startDate : min), tasks[0].startDate)
+    : project.startDate;
+
   if (duration === "2w") {
-    const end = new Date(); end.setDate(end.getDate() + 13);
-    return { startDate: todayIso, endDate: end.toISOString().slice(0, 10) };
+    const start = new Date(earliestStart + "T00:00:00");
+    const end = new Date(start); end.setDate(end.getDate() + 13);
+    return { startDate: earliestStart, endDate: end.toISOString().slice(0, 10) };
   }
   if (duration === "1m") {
-    const end = new Date(); end.setDate(end.getDate() + 29);
-    return { startDate: todayIso, endDate: end.toISOString().slice(0, 10) };
+    const start = new Date(earliestStart + "T00:00:00");
+    const end = new Date(start); end.setDate(end.getDate() + 29);
+    return { startDate: earliestStart, endDate: end.toISOString().slice(0, 10) };
   }
   if (duration === "3m") {
-    const end = new Date(); end.setDate(end.getDate() + 89);
-    return { startDate: todayIso, endDate: end.toISOString().slice(0, 10) };
+    const start = new Date(earliestStart + "T00:00:00");
+    const end = new Date(start); end.setDate(end.getDate() + 89);
+    return { startDate: earliestStart, endDate: end.toISOString().slice(0, 10) };
   }
   if (duration === "full") {
     return { startDate: project.startDate, endDate: project.endDate };
@@ -702,8 +709,8 @@ function ScheduleTab({ project, tasks }: { project: Project; tasks: Task[] }) {
   const [exporting, setExporting] = useState(false);
 
   const exportDates = useMemo(
-    () => getExportDates(exportDuration, project, exportCustomStart, exportCustomEnd),
-    [exportDuration, project, exportCustomStart, exportCustomEnd]
+    () => getExportDates(exportDuration, project, exportCustomStart, exportCustomEnd, tasks),
+    [exportDuration, project, exportCustomStart, exportCustomEnd, tasks]
   );
   const exportGranularity: ScheduleGranularity = autoGranularity(exportDates.startDate, exportDates.endDate);
   const exportVisibleTaskCount = tasks.filter((t) => t.endDate >= exportDates.startDate && t.startDate <= exportDates.endDate).length;
