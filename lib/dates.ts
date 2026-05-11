@@ -44,6 +44,7 @@ export function workingDays(startDate: string, endDate: string): Date[] {
 export function bucketKey(date: Date, granularity: Granularity): string {
   const year = date.getFullYear();
   if (granularity === "day") return iso(date);
+  if (granularity === "year") return String(year);
   if (granularity === "month") return `${year}-${String(date.getMonth() + 1).padStart(2, "0")}`;
   const weekStart = new Date(date);
   weekStart.setDate(date.getDate() - date.getDay() + 1);
@@ -52,6 +53,7 @@ export function bucketKey(date: Date, granularity: Granularity): string {
 
 export function bucketLabel(date: Date, granularity: Granularity): string {
   if (granularity === "day") return date.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+  if (granularity === "year") return String(date.getFullYear());
   if (granularity === "month") return date.toLocaleDateString("en-CA", { month: "short", year: "2-digit" });
   const weekStart = new Date(date);
   weekStart.setDate(date.getDate() - date.getDay() + 1);

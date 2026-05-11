@@ -1,4 +1,4 @@
-import { addDays, bucketKey, bucketLabel, dateRange, iso, parseDate, today, workingDays } from "@/lib/dates";
+import { addDays, bucketKey, bucketLabel, iso, parseDate, today, workingDays } from "@/lib/dates";
 import type { Granularity, PeriodPoint, Project, Task, ValueMode } from "@/lib/types";
 
 export type DateRangeFilter = {
@@ -52,38 +52,34 @@ export function aggregateProject(
   range: DateRangeFilter = {},
   crewTypeIds: string[] = []
 ): PeriodPoint[] {
-  const dailyTotals = new Map<string, { date: Date; hours: number; crew: number }>();
+  const buckets = new Map<string, PeriodPoint>();
 
   project.tasks.forEach((task) => {
-    const days = taskWorkingDays(task);
-    const filteredDays = filterDates(days, range);
+    const working = boundedWorkingDays(task.startDate, task.endDate, range);
+    if (working.labourHoursTruncated) {
+      console.warn(`[labour] Timeline truncated while aggregating task ${task.id} in project ${project.id}. Check task dates before relying on curve totals.`);
+    }
+    const days = working.days;
+    const totalWorkingDays = countBoundedWorkingDays(task.startDate, task.endDate);
     const hours = effectiveTaskHours(task, project, crewTypeIds);
-    const dailyHours = hours / Math.max(1, days.length);
+    const dailyHours = hours / Math.max(1, totalWorkingDays);
     const dailyCrew = dailyHours / Math.max(1, project.dailyHoursPerWorker);
 
-    filteredDays.forEach((date) => {
-      const key = iso(date);
-      const current = dailyTotals.get(key) || { date, hours: 0, crew: 0 };
+    days.forEach((date) => {
+      const key = bucketKey(date, granularity);
+      const current = buckets.get(key) || {
+        label: bucketLabel(date, granularity),
+        sort: key,
+        value: 0,
+        hours: 0,
+        crew: 0
+      };
       current.hours += dailyHours;
       current.crew += dailyCrew;
-      dailyTotals.set(key, current);
+      current.labourHoursTruncated = current.labourHoursTruncated || working.labourHoursTruncated;
+      current.value = valueMode === "hours" ? current.hours : current.crew;
+      buckets.set(key, current);
     });
-  });
-
-  const buckets = new Map<string, PeriodPoint>();
-  dailyTotals.forEach((day) => {
-    const key = bucketKey(day.date, granularity);
-    const current = buckets.get(key) || {
-      label: bucketLabel(day.date, granularity),
-      sort: key,
-      value: 0,
-      hours: 0,
-      crew: 0
-    };
-    current.hours += day.hours;
-    current.crew = Math.max(current.crew, day.crew);
-    current.value = valueMode === "hours" ? current.hours : current.crew;
-    buckets.set(key, current);
   });
 
   return Array.from(buckets.values()).sort((a, b) => a.sort.localeCompare(b.sort));
@@ -171,11 +167,53 @@ export function dashboardRange(windowId: string, startDate?: string, endDate?: s
   return {};
 }
 
-function filterDates(dates: Date[], range: DateRangeFilter): Date[] {
-  const start = range.startDate ? parseDate(range.startDate).getTime() : -Infinity;
-  const end = range.endDate ? parseDate(range.endDate).getTime() : Infinity;
-  return dates.filter((date) => date.getTime() >= start && date.getTime() <= end);
+function boundedWorkingDays(startDate: string, endDate: string, range: DateRangeFilter): { days: Date[]; labourHoursTruncated: boolean } {
+  const start = parseDate(startDate);
+  const end = parseDate(endDate);
+  const rangeStart = range.startDate ? parseDate(range.startDate) : start;
+  const rangeEnd = range.endDate ? parseDate(range.endDate) : end;
+  const effectiveStart = new Date(Math.max(start.getTime(), rangeStart.getTime()));
+  const effectiveEnd = new Date(Math.min(end.getTime(), rangeEnd.getTime()));
+  if (!Number.isFinite(effectiveStart.getTime()) || !Number.isFinite(effectiveEnd.getTime()) || effectiveStart > effectiveEnd) {
+    return { days: [], labourHoursTruncated: false };
+  }
+  return collectWorkingDays(effectiveStart, effectiveEnd);
 }
+
+function countBoundedWorkingDays(startDate: string, endDate: string): number {
+  const start = parseDate(startDate);
+  const end = parseDate(endDate);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start > end) return 1;
+  let count = 0;
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) count += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return Math.max(1, count);
+}
+
+function collectWorkingDays(start: Date, end: Date): { days: Date[]; labourHoursTruncated: boolean } {
+  const days: Date[] = [];
+  const cursor = new Date(start);
+  let guard = 0;
+  let labourHoursTruncated = false;
+  while (cursor <= end) {
+    if (guard >= maxTaskTimelineDays) {
+      labourHoursTruncated = true;
+      console.warn(`[labour] Working-day collection stopped after ${maxTaskTimelineDays} calendar days from ${start.toISOString()} to ${end.toISOString()}.`);
+      break;
+    }
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) days.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+    guard += 1;
+  }
+  return { days: days.length ? days : [new Date(start)], labourHoursTruncated };
+}
+
+const maxTaskTimelineDays = 10_000;
 
 export function ganttPeriods(project: Project, granularity: Granularity) {
   const start = parseDate(project.startDate);
@@ -195,6 +233,7 @@ export function ganttPeriods(project: Project, granularity: Granularity) {
     if (granularity === "day") cursor.setDate(cursor.getDate() + 1);
     if (granularity === "week") cursor.setDate(cursor.getDate() + 7);
     if (granularity === "month") cursor.setMonth(cursor.getMonth() + 1, 1);
+    if (granularity === "year") cursor.setFullYear(cursor.getFullYear() + 1, 0, 1);
   }
 
   return periods;
@@ -207,6 +246,7 @@ function periodStartFor(date: Date, granularity: Granularity): Date {
     next.setDate(next.getDate() - next.getDay() + 1);
     return next;
   }
+  if (granularity === "year") return new Date(next.getFullYear(), 0, 1);
   return new Date(next.getFullYear(), next.getMonth(), 1);
 }
 
@@ -214,6 +254,7 @@ function periodEndFor(date: Date, granularity: Granularity): Date {
   const start = periodStartFor(date, granularity);
   if (granularity === "day") return start;
   if (granularity === "week") return addDays(start, 6);
+  if (granularity === "year") return new Date(start.getFullYear(), 11, 31);
   return new Date(start.getFullYear(), start.getMonth() + 1, 0);
 }
 

@@ -1,5 +1,5 @@
 import { crewTypes } from "@/lib/constants";
-import type { AppState, CrewAllocation, Manager, Project, Task } from "@/lib/types";
+import type { AppState, AppUser, CrewAllocation, Manager, Project, Task } from "@/lib/types";
 
 export const managers: Manager[] = [
   { id: "pm1", name: "Priya Manager", email: "priya@piche.local" },
@@ -139,28 +139,56 @@ export const seedProjects: Project[] = [
     maxAvailableWorkers: 45,
     scheduleImports: [{ id: "imp-l2-1", fileName: "L2 Zone import.csv", importedAt: "2026-04-30", newTasks: 16, updatedTasks: 0, skipped: 2, status: "Complete" }],
     tasks: [
-      task("C25440", "L2-Zone 1 Layout & Top Track", "2026-05-22", "2026-05-28", 74.51, allocation("layout"), 1, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C25450", "L2-Zone 1 Early Rooms & Elevator Shafts", "2026-05-29", "2026-06-11", 224.5, allocation("stud"), 2, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C56620", "L2-Zone 2A Layout & Top Track", "2026-05-29", "2026-06-04", 117.73, allocation("layout"), 3, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C56630", "L2-Zone 2A Early Rooms & Elevator Shafts", "2026-06-05", "2026-06-25", 493.28, allocation("stud"), 4, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C25470", "L2-Zone 1 Steel Stud", "2026-07-13", "2026-07-24", 656.98, allocation("stud"), 5, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C56650", "L2-Zone 2A Steel Stud", "2026-07-27", "2026-08-18", 1444.39, allocation("stud"), 6, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C73030", "L2-Zone 5 Early Rooms & Elevator Shafts", "2026-08-06", "2026-08-19", 834.01, allocation("stud"), 7, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C57450", "L2-Zone 4 Early Rooms & Elevator Shafts", "2026-08-24", "2026-09-04", 826.51, allocation("stud"), 8, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C81740", "L2-Zone 2B Steel Stud", "2026-09-17", "2026-10-07", 1892.78, allocation("stud"), 9, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C57470", "L2-Zone 4 Steel Stud", "2026-10-08", "2026-10-27", 2429.35, allocation("stud"), 10, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C73050", "L2-Zone 5 Steel Stud", "2026-10-09", "2026-10-27", 2402.89, allocation("stud"), 11, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C57060", "L2-Zone 3 Steel Stud", "2026-11-05", "2026-11-27", 2073.1, allocation("stud"), 12, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C25500", "L2-Zone 1 Board & Tape", "2026-11-19", "2026-11-27", 506.61, allocation("joint"), 13, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C59680", "L5-Zone 1 Steel Stud", "2026-12-01", "2026-12-22", 2856.29, allocation("stud"), 14, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("P1-UNDER", "P1 Underslab insulation NP", "2026-12-07", "2027-01-15", 2920, allocation("general"), 15, { source: "import", lastImportedAt: "2026-04-30" }),
-      task("C56680", "L2-Zone 2A Board & Tape", "2026-12-15", "2027-01-22", 1641.18, allocation("joint"), 16, { source: "import", lastImportedAt: "2026-04-30" })
+      task("C25440", "L2-Zone 1 Layout & Top Track", "2026-05-22", "2026-05-28", 74.51, allocation("layout"), 1, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C25450", "L2-Zone 1 Early Rooms & Elevator Shafts", "2026-05-29", "2026-06-11", 224.5, allocation("stud"), 2, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C56620", "L2-Zone 2A Layout & Top Track", "2026-05-29", "2026-06-04", 117.73, allocation("layout"), 3, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C56630", "L2-Zone 2A Early Rooms & Elevator Shafts", "2026-06-05", "2026-06-25", 493.28, allocation("stud"), 4, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C25470", "L2-Zone 1 Steel Stud", "2026-07-13", "2026-07-24", 656.98, allocation("stud"), 5, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C56650", "L2-Zone 2A Steel Stud", "2026-07-27", "2026-08-18", 1444.39, allocation("stud"), 6, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C73030", "L2-Zone 5 Early Rooms & Elevator Shafts", "2026-08-06", "2026-08-19", 834.01, allocation("stud"), 7, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C57450", "L2-Zone 4 Early Rooms & Elevator Shafts", "2026-08-24", "2026-09-04", 826.51, allocation("stud"), 8, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C81740", "L2-Zone 2B Steel Stud", "2026-09-17", "2026-10-07", 1892.78, allocation("stud"), 9, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C57470", "L2-Zone 4 Steel Stud", "2026-10-08", "2026-10-27", 2429.35, allocation("stud"), 10, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C73050", "L2-Zone 5 Steel Stud", "2026-10-09", "2026-10-27", 2402.89, allocation("stud"), 11, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C57060", "L2-Zone 3 Steel Stud", "2026-11-05", "2026-11-27", 2073.1, allocation("stud"), 12, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C25500", "L2-Zone 1 Board & Tape", "2026-11-19", "2026-11-27", 506.61, allocation("joint"), 13, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C59680", "L5-Zone 1 Steel Stud", "2026-12-01", "2026-12-22", 2856.29, allocation("stud"), 14, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("P1-UNDER", "P1 Underslab insulation NP", "2026-12-07", "2027-01-15", 2920, allocation("general"), 15, { source: "excel_import", lastImportedAt: "2026-04-30" }),
+      task("C56680", "L2-Zone 2A Board & Tape", "2026-12-15", "2027-01-22", 1641.18, allocation("joint"), 16, { source: "excel_import", lastImportedAt: "2026-04-30" })
     ]
   }
 ];
 
+export const seedUsers: AppUser[] = [
+  {
+    id: "admin-1",
+    name: "Piche Admin",
+    username: "admin",
+    password: "admin123",
+    role: "admin",
+    assignedProjectIds: seedProjects.map((project) => project.id)
+  },
+  {
+    id: "pm-pouria",
+    name: "Pouria Project Manager",
+    username: "pouria",
+    password: "pouria123",
+    role: "pm",
+    assignedProjectIds: ["qeii", "terminal", "l2-zone-schedule"]
+  },
+  {
+    id: "vp-1",
+    name: "VP User",
+    username: "vp",
+    password: "vp123",
+    role: "vp",
+    assignedProjectIds: seedProjects.map((project) => project.id)
+  }
+];
+
 export const initialState: AppState = {
-  role: "pm",
+  role: "admin",
+  currentUserId: "admin-1",
   currentUserManagerId: "pm1",
   activeView: "dashboard",
   activeProjectId: "qeii",
@@ -185,6 +213,7 @@ export const initialState: AppState = {
   crewRequirementMode: "rounded",
   crewScenarioCapacity: null,
   managers,
+  users: seedUsers,
   crewTypes,
   projects: seedProjects
 };

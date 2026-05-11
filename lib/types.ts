@@ -1,9 +1,9 @@
 export type Role = "admin" | "pm" | "vp";
 export type ProjectStatus = "Active" | "At Risk" | "Planning";
 export type LabourHoursSource = "manual" | "derived";
-export type TaskSource = "manual" | "import";
+export type TaskSource = "manual" | "excel_import";
 export type RequirementMode = "rounded" | "exact";
-export type Granularity = "day" | "week" | "month";
+export type Granularity = "day" | "week" | "month" | "year";
 export type ChartMode = "combined" | "stacked" | "split";
 export type ValueMode = "crew" | "hours";
 
@@ -11,6 +11,15 @@ export type Manager = {
   id: string;
   name: string;
   email: string;
+};
+
+export type AppUser = {
+  id: string;
+  name: string;
+  username: string;
+  password: string;
+  role: Role;
+  assignedProjectIds: string[];
 };
 
 export type CrewType = {
@@ -66,27 +75,18 @@ export type Project = {
   scheduleImports: ScheduleImport[];
 };
 
-export type ImportReviewRow = {
-  id: string;
-  name: string;
-  startDate: string;
-  endDate: string;
-  totalValue: number;
-  changeType: "changed" | "new" | "unchanged";
-  selected: boolean;
-  existing?: Task;
-};
-
 export type PeriodPoint = {
   label: string;
   sort: string;
   value: number;
   hours: number;
   crew: number;
+  labourHoursTruncated?: boolean;
 };
 
 export type AppState = {
   role: Role;
+  currentUserId: string;
   currentUserManagerId: string;
   activeView: "dashboard" | "projects" | "access" | "settings";
   activeProjectId: string;
@@ -111,6 +111,7 @@ export type AppState = {
   crewRequirementMode: RequirementMode;
   crewScenarioCapacity: number | null;
   managers: Manager[];
+  users: AppUser[];
   crewTypes: CrewType[];
   projects: Project[];
 };

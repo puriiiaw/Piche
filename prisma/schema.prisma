@@ -27,7 +27,7 @@ enum LabourHoursSource {
 
 enum TaskSource {
   MANUAL
-  IMPORT
+  EXCEL_IMPORT
 }
 
 enum RequirementMode {
