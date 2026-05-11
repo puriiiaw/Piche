@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ButtonHTMLAttributes, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type CSSProperties } from "react";
 import { toast } from "sonner";
 import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -209,9 +209,21 @@ function ProjectDetail({ project }: { project: Project }) {
             {tab === "crew" ? "Crew Allocation" : tab}
           </button>
         ))}
+        {/* Archive tab with count badge */}
+        <button
+          className={`relative min-h-11 rounded-app border px-4 font-black capitalize ${state.activeProjectTab === "archive" ? "border-piche-navy bg-piche-navy text-white" : "border-piche-line bg-slate-50 text-slate-600"}`}
+          onClick={() => state.setProjectTab("archive")}
+        >
+          Archive
+          {project.tasks.filter((t) => t.isCompleted).length > 0 && (
+            <span className={`ml-2 rounded-full px-1.5 py-0.5 text-xs font-black ${state.activeProjectTab === "archive" ? "bg-white/20 text-white" : "bg-piche-gold/20 text-piche-goldDark"}`}>
+              {project.tasks.filter((t) => t.isCompleted).length}
+            </span>
+          )}
+        </button>
       </div>
 
-      {state.activeProjectTab !== "overview" && state.activeProjectTab !== "imports" && (
+      {state.activeProjectTab !== "overview" && state.activeProjectTab !== "imports" && state.activeProjectTab !== "archive" && (
         <div className="flex flex-wrap items-end gap-3 rounded-app border border-piche-line bg-slate-50 px-4 py-3">
           <label className="field min-w-[180px] flex-1">
             <span>Search tasks</span>
@@ -237,6 +249,7 @@ function ProjectDetail({ project }: { project: Project }) {
       {state.activeProjectTab === "schedule" && <ScheduleTab project={project} tasks={filteredTasks} />}
       {state.activeProjectTab === "crew" && <CrewTab project={project} tasks={filteredTasks} />}
       {state.activeProjectTab === "imports" && <ImportsTab project={project} />}
+      {state.activeProjectTab === "archive" && <ArchiveTab project={project} />}
     </section>
   );
 }
@@ -336,6 +349,8 @@ function useLabourCurve(url: string): LabourCurveHook {
 
 const pageSizeOptions = [50, 100, 200] as const;
 
+type CompletionUndo = { taskId: string; taskName: string; startedAt: number };
+
 function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
   const state = useAppStore();
   const [taskDialog, setTaskDialog] = useState<Task | null | "new">(null);
@@ -345,6 +360,12 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkHours, setBulkHours] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
+  // Completion undo state
+  const [completionUndo, setCompletionUndo] = useState<CompletionUndo | null>(null);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set()); // visible during undo window
+  const [fadingIds, setFadingIds] = useState<Set<string>>(new Set());   // CSS fade-out
+  const [parentConfirm, setParentConfirm] = useState<Task | null>(null); // parent task confirm dialog
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset to page 1 when tasks (filter) changes
   useEffect(() => { setCurrentPage(1); }, [tasks]);
@@ -399,6 +420,59 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
     if (event.over?.id && event.active.id !== event.over.id) state.reorderTask(project.id, String(event.active.id), String(event.over.id));
   };
 
+  // ── Task completion ─────────────────────────────────────────────────────────
+  const activeTasks = tasks.filter((t) => !t.isCompleted || pendingIds.has(t.id));
+
+  const startCompletionTimer = (taskId: string, taskName: string) => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setCompletionUndo({ taskId, taskName, startedAt: Date.now() });
+    undoTimerRef.current = setTimeout(() => {
+      // Begin CSS fade-out
+      setFadingIds((prev) => new Set([...prev, taskId]));
+      setTimeout(() => {
+        setPendingIds((prev) => { const next = new Set(prev); next.delete(taskId); return next; });
+        setFadingIds((prev) => { const next = new Set(prev); next.delete(taskId); return next; });
+        setCompletionUndo(null);
+      }, 300);
+    }, 5000);
+  };
+
+  const handleComplete = async (task: Task) => {
+    // Parent task: check for sub-tasks
+    const subTasks = tasks.filter((t) => !t.isCompleted && t.id !== task.id && (t.id.startsWith(task.id + ".") || t.id.startsWith(task.id + "-")));
+    const isParentTask = task.totalLabourHours === 0 && !task.labourHoursMissing;
+    if (isParentTask && subTasks.length > 0) {
+      setParentConfirm(task);
+      return;
+    }
+    await doComplete(task.id, task.name);
+  };
+
+  const doComplete = async (taskId: string, taskName: string, extraIds: string[] = []) => {
+    const ids = [taskId, ...extraIds];
+    await Promise.all(ids.map((id) =>
+      fetch(`/api/projects/${project.id}/tasks/${id}/complete`, { method: "PATCH" })
+        .then((r) => {
+          if (r.ok) state.completeTask(project.id, id, new Date().toISOString(), "");
+        })
+    ));
+    setPendingIds((prev) => new Set([...prev, ...ids]));
+    startCompletionTimer(taskId, taskName);
+  };
+
+  const handleUndoComplete = async () => {
+    if (!completionUndo) return;
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    const { taskId } = completionUndo;
+    setCompletionUndo(null);
+    setPendingIds((prev) => { const next = new Set(prev); next.delete(taskId); return next; });
+    await fetch(`/api/projects/${project.id}/tasks/${taskId}/restore`, { method: "PATCH" });
+    state.restoreTask(project.id, taskId);
+  };
+
+  // Paginate over active (non-completed) tasks
+  const activePageTasks = activeTasks.slice((safePage - 1) * pageSize, safePage * pageSize);
+
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -414,16 +488,16 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
 
       {isLargeProject && !selectedIds.size ? (
         <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={pageTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-            <TaskTable tasks={pageTasks} project={project} onEdit={setTaskDialog} sortable={false} selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={isLargeProject} />
+          <SortableContext items={activePageTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+            <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable={false} selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={isLargeProject} onComplete={state.role === "pm" ? handleComplete : undefined} fadingIds={fadingIds} />
           </SortableContext>
         </DndContext>
       ) : isLargeProject ? (
-        <TaskTable tasks={pageTasks} project={project} onEdit={setTaskDialog} sortable={false} selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={isLargeProject} />
+        <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable={false} selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={isLargeProject} onComplete={state.role === "pm" ? handleComplete : undefined} fadingIds={fadingIds} />
       ) : (
         <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={pageTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-            <TaskTable tasks={pageTasks} project={project} onEdit={setTaskDialog} sortable selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={false} />
+          <SortableContext items={activePageTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+            <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={false} onComplete={state.role === "pm" ? handleComplete : undefined} fadingIds={fadingIds} />
           </SortableContext>
         </DndContext>
       )}
@@ -432,7 +506,7 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-app border border-piche-line bg-slate-50 px-4 py-3">
         {/* Counter */}
         <span className="text-sm font-semibold text-piche-muted">
-          Showing {pageTasks.length > 0 ? (safePage - 1) * pageSize + 1 : 0}–{Math.min(safePage * pageSize, tasks.length)} of {tasks.length} {tasks.length !== project.tasks.length ? "matching " : ""}tasks
+          Showing {activePageTasks.length > 0 ? (safePage - 1) * pageSize + 1 : 0}–{Math.min(safePage * pageSize, activeTasks.length)} of {activeTasks.length} active tasks
         </span>
 
         {/* Page buttons */}
@@ -498,6 +572,59 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
 
       <TaskDialog open={Boolean(taskDialog)} onOpenChange={(open) => !open && setTaskDialog(null)} projectId={project.id} task={taskDialog === "new" ? undefined : taskDialog || undefined} />
 
+      {/* ── Completion undo toast ── */}
+      {completionUndo && (
+        <div className="fixed bottom-6 right-6 z-50 w-72 overflow-hidden rounded-app bg-piche-navy text-white shadow-2xl">
+          <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
+            <span className="text-sm font-semibold">✓ Task marked as done</span>
+            <button
+              className="rounded-md border border-white/20 px-3 py-1 text-xs font-black"
+              onClick={handleUndoComplete}
+            >
+              Undo
+            </button>
+          </div>
+          <p className="px-4 pb-2 text-xs text-white/60 truncate">{completionUndo.taskName}</p>
+          {/* 5-second countdown bar */}
+          <div className="h-1 w-full bg-white/10">
+            <div
+              key={completionUndo.startedAt}
+              className="h-full bg-piche-gold"
+              style={{ animation: "countdown-bar 5s linear forwards" }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Parent task confirm dialog ── */}
+      {parentConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="card w-full max-w-sm p-6">
+            <h2 className="text-xl font-black text-piche-ink">Archive sub-tasks too?</h2>
+            <p className="mt-2 text-piche-muted">
+              This will also archive{" "}
+              <strong>{tasks.filter((t) => !t.isCompleted && t.id !== parentConfirm.id && (t.id.startsWith(parentConfirm.id + ".") || t.id.startsWith(parentConfirm.id + "-"))).length} sub-task(s)</strong>.
+              Continue?
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button className="btn-secondary" onClick={() => setParentConfirm(null)}>Cancel</button>
+              <button
+                className="btn-primary"
+                onClick={async () => {
+                  const subIds = tasks
+                    .filter((t) => !t.isCompleted && t.id !== parentConfirm.id && (t.id.startsWith(parentConfirm.id + ".") || t.id.startsWith(parentConfirm.id + "-")))
+                    .map((t) => t.id);
+                  setParentConfirm(null);
+                  await doComplete(parentConfirm.id, parentConfirm.name, subIds);
+                }}
+              >
+                Archive All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bulk hours modal */}
       {bulkOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 max-[640px]:items-end">
@@ -548,7 +675,9 @@ function TaskTable({
   onToggle,
   onToggleAll,
   allSelected,
-  isLargeProject
+  isLargeProject,
+  onComplete,
+  fadingIds
 }: {
   tasks: Task[];
   project: Project;
@@ -559,12 +688,15 @@ function TaskTable({
   onToggleAll?: () => void;
   allSelected?: boolean;
   isLargeProject?: boolean;
+  onComplete?: (task: Task) => void;
+  fadingIds?: Set<string>;
 }) {
   return (
     <div className="overflow-auto rounded-app border border-piche-line">
       <table className="w-full min-w-[1200px] text-left">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
+            {onComplete && <th className="w-10 p-3" title="Mark complete" />}
             {selectedIds !== undefined && (
               <th className="w-10 p-3">
                 <button onClick={onToggleAll} className="grid h-5 w-5 place-items-center text-slate-500 hover:text-piche-navy" title={allSelected ? "Deselect all" : "Select all"}>
@@ -586,8 +718,8 @@ function TaskTable({
         </thead>
         <tbody>
           {tasks.map((task) => sortable
-            ? <SortableTaskRow key={task.id} task={task} project={project} onEdit={() => onEdit(task)} selected={selectedIds?.has(task.id)} onToggle={onToggle ? () => onToggle(task.id) : undefined} />
-            : <TaskRow key={task.id} task={task} project={project} onEdit={() => onEdit(task)} selected={selectedIds?.has(task.id)} onToggle={onToggle ? () => onToggle(task.id) : undefined} dragDisabled={isLargeProject} />
+            ? <SortableTaskRow key={task.id} task={task} project={project} onEdit={() => onEdit(task)} selected={selectedIds?.has(task.id)} onToggle={onToggle ? () => onToggle(task.id) : undefined} onComplete={onComplete ? () => onComplete(task) : undefined} fading={fadingIds?.has(task.id)} />
+            : <TaskRow key={task.id} task={task} project={project} onEdit={() => onEdit(task)} selected={selectedIds?.has(task.id)} onToggle={onToggle ? () => onToggle(task.id) : undefined} dragDisabled={isLargeProject} onComplete={onComplete ? () => onComplete(task) : undefined} fading={fadingIds?.has(task.id)} />
           )}
         </tbody>
       </table>
@@ -595,7 +727,7 @@ function TaskTable({
   );
 }
 
-function SortableTaskRow(props: { task: Task; project: Project; onEdit: () => void; selected?: boolean; onToggle?: () => void; dragDisabled?: boolean }) {
+function SortableTaskRow(props: { task: Task; project: Project; onEdit: () => void; selected?: boolean; onToggle?: () => void; dragDisabled?: boolean; onComplete?: () => void; fading?: boolean }) {
   const sortable = useSortable({ id: props.task.id });
   const style = {
     transform: CSS.Transform.toString(sortable.transform),
@@ -613,7 +745,9 @@ function TaskRow({
   style,
   selected,
   onToggle,
-  dragDisabled
+  dragDisabled,
+  onComplete,
+  fading
 }: {
   task: Task;
   project: Project;
@@ -624,10 +758,26 @@ function TaskRow({
   selected?: boolean;
   onToggle?: () => void;
   dragDisabled?: boolean;
+  onComplete?: () => void;
+  fading?: boolean;
 }) {
   const state = useAppStore();
   return (
-    <tr ref={rowRef} style={style} className={`border-t border-piche-line ${selected ? "bg-piche-gold/10" : "bg-white"}`}>
+    <tr ref={rowRef} style={style} className={`border-t border-piche-line transition-opacity duration-300 ${fading ? "opacity-0" : "opacity-100"} ${selected ? "bg-piche-gold/10" : "bg-white"}`}>
+      {/* Completion checkbox — only rendered when onComplete is provided (PM role) */}
+      {onComplete !== undefined && (
+        <td className="p-3">
+          <button
+            onClick={onComplete}
+            title="Mark task as complete"
+            className="group grid h-6 w-6 place-items-center rounded-full border-2 border-slate-300 text-transparent transition-all duration-200 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-500"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </td>
+      )}
       {onToggle !== undefined && (
         <td className="p-3">
           <button onClick={onToggle} className="grid h-5 w-5 place-items-center text-slate-400 hover:text-piche-navy">
@@ -1001,6 +1151,77 @@ function ImportsTab({ project }: { project: Project }) {
         </table>
       </div>
       <ImportWizard open={open} onOpenChange={setOpen} project={project} />
+    </div>
+  );
+}
+
+function ArchiveTab({ project }: { project: Project }) {
+  const state = useAppStore();
+  const completedTasks = project.tasks.filter((t) => t.isCompleted);
+
+  const handleRestore = async (task: Task) => {
+    const res = await fetch(`/api/projects/${project.id}/tasks/${task.id}/restore`, { method: "PATCH" });
+    if (res.ok) {
+      state.restoreTask(project.id, task.id);
+      toast.success(`${task.name} restored to active tasks.`);
+    } else {
+      toast.error("Could not restore task.");
+    }
+  };
+
+  return (
+    <div className="grid gap-4">
+      <div>
+        <h3 className="text-xl font-black">Archived Tasks</h3>
+        <p className="text-sm text-piche-muted">{completedTasks.length} completed task(s). Click Restore to move back to the active Tasks tab.</p>
+      </div>
+      {completedTasks.length === 0 ? (
+        <div className="rounded-app border border-piche-line bg-slate-50 p-8 text-center text-piche-muted">
+          No archived tasks yet. Mark tasks as complete from the Tasks tab.
+        </div>
+      ) : (
+        <div className="overflow-auto rounded-app border border-piche-line">
+          <table className="w-full min-w-[900px] text-left">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+              <tr>
+                <th className="p-3">Task ID</th>
+                <th className="p-3">Name</th>
+                <th className="p-3">Start</th>
+                <th className="p-3">End</th>
+                <th className="p-3">Hours</th>
+                <th className="p-3">Completed</th>
+                <th className="p-3">Completed By</th>
+                <th className="p-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {completedTasks.map((task) => (
+                <tr key={task.id} className="border-t border-piche-line bg-emerald-50/30">
+                  <td className="p-3 font-black text-slate-500">{task.id}</td>
+                  <td className="p-3 font-bold line-through text-slate-400">{task.name}</td>
+                  <td className="p-3 text-slate-400">{formatDate(task.startDate)}</td>
+                  <td className="p-3 text-slate-400">{formatDate(task.endDate)}</td>
+                  <td className="p-3 text-slate-400">{formatNumber(task.totalLabourHours, 2)}</td>
+                  <td className="p-3 text-slate-500">
+                    {task.completedAt
+                      ? new Date(task.completedAt).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })
+                      : "—"}
+                  </td>
+                  <td className="p-3 text-slate-500">{task.completedBy || "—"}</td>
+                  <td className="p-3">
+                    <button
+                      className="rounded-app border border-piche-line bg-white px-3 py-1.5 text-sm font-black text-piche-ink hover:bg-slate-50"
+                      onClick={() => handleRestore(task)}
+                    >
+                      Restore
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

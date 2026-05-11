@@ -34,7 +34,10 @@ export function serializeProject(project: DbProject): Project {
       notes: task.notes,
       assumptions: task.assumptions,
       documentLink: task.documentLink,
-      sortOrder: task.sortOrder
+      sortOrder: task.sortOrder,
+      isCompleted: task.isCompleted,
+      completedAt: task.completedAt ? task.completedAt.toISOString() : undefined,
+      completedBy: task.completedBy || undefined
     })),
     scheduleImports: project.scheduleImports.map((item) => ({
       id: item.id,

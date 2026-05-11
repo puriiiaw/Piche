@@ -142,6 +142,9 @@ model Task {
   assumptions           String             @default("")
   documentLink          String             @default("")
   sortOrder             Int
+  isCompleted           Boolean            @default(false)
+  completedAt           DateTime?
+  completedBy           String?
   allocations           CrewAllocation[]
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt

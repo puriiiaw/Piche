@@ -64,10 +64,23 @@ export function DashboardView() {
       startDate: state.dashboardStartDate || "",
       endDate: state.dashboardEndDate || "",
       crewTypeIds: state.selectedCrewTypeIds.join(","),
-      capacity: String(capacity)
+      capacity: String(capacity),
+      taskFilter: state.dashboardTaskFilter
     });
     return `/api/company/labour-curve?${params}`;
-  }, [selectedProjects, state.granularity, state.valueMode, state.dashboardWindow, state.dashboardStartDate, state.dashboardEndDate, state.selectedCrewTypeIds, capacity]);
+  }, [selectedProjects, state.granularity, state.valueMode, state.dashboardWindow, state.dashboardStartDate, state.dashboardEndDate, state.selectedCrewTypeIds, capacity, state.dashboardTaskFilter]);
+
+  // Completion stats computed client-side from store (no extra API call needed)
+  const completedHours = useMemo(() =>
+    selectedProjects.reduce((sum, p) => sum + p.tasks.filter((t) => t.isCompleted).reduce((s, t) => s + t.totalLabourHours, 0), 0),
+    [selectedProjects]
+  );
+  const totalHoursAll = useMemo(() =>
+    selectedProjects.reduce((sum, p) => sum + p.tasks.reduce((s, t) => s + t.totalLabourHours, 0), 0),
+    [selectedProjects]
+  );
+  const remainingHours = totalHoursAll - completedHours;
+  const completionPct = totalHoursAll > 0 ? (completedHours / totalHoursAll) * 100 : 0;
 
   const { data, loading } = useDashboardData(apiUrl);
 
@@ -109,7 +122,19 @@ export function DashboardView() {
     <>
       <section className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-4">
         <Kpi title="Active Projects" value={selectedProjects.filter((p) => p.status !== "Planning").length} detail="Currently carrying labour" />
-        <Kpi title="Total Labour Hours" value={formatNumber(data?.totalHours ?? 0)} detail="Across selected projects" />
+        {/* Labour hours with progress bar */}
+        <article className="card p-5">
+          <span className="text-sm font-black text-slate-500">Total Labour Hours</span>
+          <strong className="mt-3 block text-3xl font-black text-piche-navy">{formatNumber(totalHoursAll)}</strong>
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+            <div className="h-full rounded-full bg-piche-gold transition-all duration-500" style={{ width: `${completionPct}%` }} />
+          </div>
+          <p className="mt-2 text-xs text-piche-muted">
+            <span className="font-semibold text-emerald-700">{formatNumber(completedHours)} completed</span>
+            {" · "}
+            <span>{formatNumber(remainingHours)} remaining</span>
+          </p>
+        </article>
         <Kpi title="Peak Crew Needed" value={`${formatNumber(analysis?.peakExact ?? 0, 2)} / ${Math.ceil(analysis?.peakExact ?? 0)}`} detail="Exact / rounded workers" />
         <Kpi title="Crew This Week" value={`${formatNumber(data?.thisWeekPeak ?? 0, 2)} / ${Math.ceil(data?.thisWeekPeak ?? 0)}`} detail="Exact / rounded this week" />
         <Kpi title="Over-Capacity Periods" value={analysis?.overCapacityPeriods ?? 0} detail="Periods above capacity" tone={analysis?.overCapacityPeriods ? "danger" : "good"} />
@@ -136,6 +161,24 @@ export function DashboardView() {
               </button>
             </div>
             <DashboardControls visibleProjects={visibleProjects} />
+            {/* Task filter toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-black text-slate-500">Show:</span>
+              <div className="inline-flex rounded-app bg-slate-100 p-1">
+                {(["all", "remaining", "completed"] as const).map((f) => (
+                  <button
+                    key={f}
+                    className={`min-h-9 rounded-md px-3 text-sm font-black capitalize ${state.dashboardTaskFilter === f ? "bg-white text-piche-goldDark shadow" : "text-slate-600"}`}
+                    onClick={() => state.setField("dashboardTaskFilter", f)}
+                  >
+                    {f === "all" ? "All" : f === "remaining" ? "Remaining" : "Completed"}
+                  </button>
+                ))}
+              </div>
+              {state.dashboardTaskFilter !== "all" && (
+                <span className="text-xs text-piche-muted">Peak Watch always uses all tasks</span>
+              )}
+            </div>
           </div>
 
           <div className="h-[380px]">

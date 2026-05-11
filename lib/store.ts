@@ -40,6 +40,8 @@ type AppStore = AppState & {
   replaceProjects: (projects: Project[]) => void;
   replaceManagers: (managers: AppState["managers"]) => void;
   replaceProjectFromImport: (project: Project) => void;
+  completeTask: (projectId: string, taskId: string, completedAt: string, completedBy: string) => void;
+  restoreTask: (projectId: string, taskId: string) => void;
 };
 
 const storageKey = "piche-build-app-state-v1";
@@ -215,6 +217,18 @@ export const useAppStore = create<AppStore>()(
         activeProjectId: projects.some((project) => project.id === state.activeProjectId) ? state.activeProjectId : projects[0]?.id || ""
       })),
       replaceManagers: (managers) => set({ managers }),
+      completeTask: (projectId, taskId, completedAt, completedBy) => set((state) => ({
+        projects: state.projects.map((project) => project.id !== projectId ? project : {
+          ...project,
+          tasks: project.tasks.map((task) => task.id !== taskId ? task : { ...task, isCompleted: true, completedAt, completedBy })
+        })
+      })),
+      restoreTask: (projectId, taskId) => set((state) => ({
+        projects: state.projects.map((project) => project.id !== projectId ? project : {
+          ...project,
+          tasks: project.tasks.map((task) => task.id !== taskId ? task : { ...task, isCompleted: false, completedAt: undefined, completedBy: undefined })
+        })
+      })),
       replaceProjectFromImport: (project) => set((state) => ({
         projects: state.projects.map((item) => item.id === project.id
           ? { ...project, tasks: [...project.tasks].sort((a, b) => a.startDate.localeCompare(b.startDate)) }
@@ -246,7 +260,8 @@ function sanitizeStateForPersistence(state: AppStore) {
     valueMode: state.valueMode,
     scheduleGranularity: state.scheduleGranularity,
     crewDisplayMode: state.crewDisplayMode,
-    crewRequirementMode: state.crewRequirementMode
+    crewRequirementMode: state.crewRequirementMode,
+    dashboardTaskFilter: state.dashboardTaskFilter
   };
 }
 
@@ -299,7 +314,8 @@ function blankTask(sortOrder: number): Task {
     notes: "",
     assumptions: "",
     documentLink: "",
-    sortOrder
+    sortOrder,
+    isCompleted: false
   };
 }
 

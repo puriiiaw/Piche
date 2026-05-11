@@ -40,7 +40,10 @@ function task(
     notes: overrides.notes ?? "",
     assumptions: overrides.assumptions ?? "",
     documentLink: overrides.documentLink ?? "",
-    sortOrder
+    sortOrder,
+    isCompleted: overrides.isCompleted ?? false,
+    completedAt: overrides.completedAt,
+    completedBy: overrides.completedBy
   };
 }
 
@@ -208,6 +211,7 @@ export const initialState: AppState = {
   crewDisplayMode: "detailed",
   crewRequirementMode: "rounded",
   crewScenarioCapacity: null,
+  dashboardTaskFilter: "all",
   currentUserAssignedProjectIds: [],
   managers,
   users: seedUsers,

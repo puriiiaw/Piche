@@ -47,6 +47,9 @@ export type Task = {
   assumptions: string;
   documentLink: string;
   sortOrder: number;
+  isCompleted: boolean;
+  completedAt?: string;
+  completedBy?: string;
 };
 
 export type ScheduleImport = {
@@ -90,7 +93,8 @@ export type AppState = {
   currentUserManagerId: string;
   activeView: "dashboard" | "projects" | "access" | "settings";
   activeProjectId: string;
-  activeProjectTab: "overview" | "tasks" | "schedule" | "crew" | "imports";
+  activeProjectTab: "overview" | "tasks" | "schedule" | "crew" | "imports" | "archive";
+  dashboardTaskFilter: "all" | "remaining" | "completed";
   query: string;
   statusFilter: "all" | ProjectStatus;
   areaFilter: string;

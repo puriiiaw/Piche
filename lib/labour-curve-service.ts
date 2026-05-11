@@ -45,7 +45,8 @@ export function buildCompanyLabourCurvePayload({
   valueMode,
   range,
   crewTypeIds,
-  capacity
+  capacity,
+  taskFilter = "all"
 }: {
   projects: Project[];
   granularity: Granularity;
@@ -53,11 +54,19 @@ export function buildCompanyLabourCurvePayload({
   range: DateRangeFilter;
   crewTypeIds: string[];
   capacity: number;
+  taskFilter?: "all" | "remaining" | "completed";
 }): LabourCurvePayload {
+  // Analysis + Peak Watch always use ALL tasks (never filtered)
   const analysis = workforceAnalysis(projects, granularity, valueMode, range, crewTypeIds, capacity);
-  const chartData = buildChartData(projects, granularity, valueMode, crewTypeIds, range, capacity);
   const totalHours = projects.reduce((sum, project) => sum + projectTotalHours(project), 0);
   const thisWeekPeak = workforceAnalysis(projects, "week", "crew", dashboardRange("week"), crewTypeIds, capacity).peakExact;
+
+  // Chart data respects the task filter
+  const chartProjects = taskFilter === "all" ? projects : projects.map((p) => ({
+    ...p,
+    tasks: p.tasks.filter((t) => taskFilter === "remaining" ? !t.isCompleted : t.isCompleted)
+  }));
+  const chartData = buildChartData(chartProjects, granularity, valueMode, crewTypeIds, range, capacity);
 
   return {
     chartData,
@@ -138,7 +147,10 @@ export function prismaProjectToAppProject(project: DbProject): Project {
       notes: task.notes,
       assumptions: task.assumptions,
       documentLink: task.documentLink,
-      sortOrder: task.sortOrder
+      sortOrder: task.sortOrder,
+      isCompleted: task.isCompleted,
+      completedAt: task.completedAt ? task.completedAt.toISOString() : undefined,
+      completedBy: task.completedBy || undefined
     }))
   };
 }
@@ -152,8 +164,14 @@ export function parseCurveSearchParams(searchParams: URLSearchParams) {
     valueMode: parseValueMode(searchParams.get("valueMode")),
     range: dashboardRange(windowId, startDate, endDate),
     crewTypeIds: (searchParams.get("crewTypeIds") || "").split(",").map((id) => id.trim()).filter(Boolean),
-    capacity: Number(searchParams.get("capacity") || 0)
+    capacity: Number(searchParams.get("capacity") || 0),
+    taskFilter: parseTaskFilter(searchParams.get("taskFilter"))
   };
+}
+
+function parseTaskFilter(value: string | null): "all" | "remaining" | "completed" {
+  if (value === "remaining" || value === "completed") return value;
+  return "all";
 }
 
 function buildChartData(projects: Project[], granularity: Granularity, valueMode: ValueMode, crewTypeIds: string[], range: DateRangeFilter, capacity: number) {

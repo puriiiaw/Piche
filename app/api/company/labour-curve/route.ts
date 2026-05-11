@@ -35,7 +35,8 @@ export async function GET(request: Request) {
       valueMode: parsed.valueMode,
       range: parsed.range,
       crewTypeIds: parsed.crewTypeIds,
-      capacity: parsed.capacity
+      capacity: parsed.capacity,
+      taskFilter: parsed.taskFilter
     });
   });
 
