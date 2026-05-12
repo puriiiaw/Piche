@@ -59,7 +59,7 @@ export type ScheduleImport = {
   newTasks: number;
   updatedTasks: number;
   skipped: number;
-  status: "Complete" | "Partial" | "Failed";
+  status: string;  // "Complete" | "Partial" | "Failed" | "Complete|withHrs|missingHrs|withValue"
 };
 
 export type Project = {

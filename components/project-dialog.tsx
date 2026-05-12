@@ -24,7 +24,6 @@ const emptyProjectForm = {
   startDate: "",
   endDate: "",
   dailyHoursPerWorker: "",
-  avgHourlyRate: "",
   maxAvailableWorkers: ""
 };
 
@@ -33,7 +32,6 @@ type ManagerOption = { id: string; name: string };
 // Field-level help text shown below numeric inputs
 const fieldHelp: Record<string, string> = {
   dailyHoursPerWorker: "Average hours one worker contributes to this project per day.",
-  avgHourlyRate: "Average hourly cost per worker in CAD, used for budget estimates.",
   maxAvailableWorkers: "Maximum number of workers allowed on site at any one time."
 };
 
@@ -74,7 +72,6 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
       startDate: project.startDate,
       endDate: project.endDate,
       dailyHoursPerWorker: String(project.dailyHoursPerWorker),
-      avgHourlyRate: String(project.avgHourlyRate),
       maxAvailableWorkers: String(project.maxAvailableWorkers)
     });
   }, [open, project]);
@@ -96,11 +93,11 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
   const handleBlur = (name: string) => validateField(name, form[name as keyof typeof form]);
 
   // Required fields for the submit button guard
-  const requiredFields = ["name", "managerId", "area", "cityName", "status", "startDate", "endDate", "dailyHoursPerWorker", "avgHourlyRate", "maxAvailableWorkers"] as const;
+  const requiredFields = ["name", "managerId", "area", "cityName", "status", "startDate", "endDate", "dailyHoursPerWorker", "maxAvailableWorkers"] as const;
   const allFilled = requiredFields.every((key) => {
     const v = form[key];
     if (!v || !String(v).trim()) return false;
-    if (["dailyHoursPerWorker", "avgHourlyRate", "maxAvailableWorkers"].includes(key)) return Number(v) > 0;
+    if (["dailyHoursPerWorker", "maxAvailableWorkers"].includes(key)) return Number(v) > 0;
     return true;
   });
 
@@ -119,7 +116,6 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
             ...form,
             status: form.status as Project["status"],
             dailyHoursPerWorker: Number(form.dailyHoursPerWorker),
-            avgHourlyRate: Number(form.avgHourlyRate),
             maxAvailableWorkers: Number(form.maxAvailableWorkers)
           };
           setSaving(true);
@@ -198,12 +194,9 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
           </FieldError>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
+        <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
           <FieldError label="Hours / Worker" error={touched.dailyHoursPerWorker ? errors.dailyHoursPerWorker : undefined} required hint={fieldHelp.dailyHoursPerWorker}>
             <input type="number" min={1} value={form.dailyHoursPerWorker} placeholder="e.g. 10" onChange={(event) => setForm({ ...form, dailyHoursPerWorker: event.target.value })} onBlur={() => handleBlur("dailyHoursPerWorker")} />
-          </FieldError>
-          <FieldError label="Avg Rate CAD" error={touched.avgHourlyRate ? errors.avgHourlyRate : undefined} required hint={fieldHelp.avgHourlyRate}>
-            <input type="number" min={1} value={form.avgHourlyRate} placeholder="e.g. 80" onChange={(event) => setForm({ ...form, avgHourlyRate: event.target.value })} onBlur={() => handleBlur("avgHourlyRate")} />
           </FieldError>
           <FieldError label="Max Workers" error={touched.maxAvailableWorkers ? errors.maxAvailableWorkers : undefined} required hint={fieldHelp.maxAvailableWorkers}>
             <input type="number" min={1} value={form.maxAvailableWorkers} placeholder="e.g. 20" onChange={(event) => setForm({ ...form, maxAvailableWorkers: event.target.value })} onBlur={() => handleBlur("maxAvailableWorkers")} />
@@ -286,7 +279,6 @@ function validateProjectForm(form: {
   startDate: string;
   endDate: string;
   dailyHoursPerWorker: string;
-  avgHourlyRate: string;
   maxAvailableWorkers: string;
 }) {
   const errors: Record<string, string> = {};
@@ -299,7 +291,6 @@ function validateProjectForm(form: {
   if (!form.endDate) errors.endDate = "This field is required";
   if (form.startDate && form.endDate && form.startDate > form.endDate) errors.endDate = "Must be after start date";
   if (!form.dailyHoursPerWorker || Number(form.dailyHoursPerWorker) <= 0) errors.dailyHoursPerWorker = "Must be a number greater than 0";
-  if (!form.avgHourlyRate || Number(form.avgHourlyRate) <= 0) errors.avgHourlyRate = "Must be a number greater than 0";
   if (!form.maxAvailableWorkers || Number(form.maxAvailableWorkers) <= 0) errors.maxAvailableWorkers = "Must be a number greater than 0";
   return errors;
 }

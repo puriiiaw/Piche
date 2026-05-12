@@ -105,12 +105,14 @@ export function ImportWizard({ open, onOpenChange, project }: ImportWizardProps)
     const selected_updates  = diff.updated_tasks
       .filter(t => selUpdates.has(t.task_id))
       .map(t => ({
-        task_id:     t.task_id,
-        name:        t.name.new,
-        start:       t.start.new,
-        end:         t.end.new,
-        hours:       t.hours.new,
-        total_value: t.total_value.new,
+        task_id:             t.task_id,
+        name:                t.name.new,
+        start:               t.start.new,
+        end:                 t.end.new,
+        hours:               t.hours.new,
+        total_value:         t.total_value.new,
+        hours_changed:       t.hours.changed,
+        total_value_changed: t.total_value.changed,
       }));
     const selected_removals = diff.removed_tasks
       .filter(t => selRemovals.has(t.task_id))
@@ -330,8 +332,8 @@ function ReviewBody({
                   <td className="p-3 font-semibold text-piche-ink">{t.name}</td>
                   <td className="p-3">{t.start}</td>
                   <td className="p-3">{t.end}</td>
-                  <td className="p-3">{t.hours > 0 ? t.hours.toLocaleString() : "—"}</td>
-                  <td className="p-3">{t.total_value > 0 ? `$${t.total_value.toLocaleString()}` : "—"}</td>
+                  <td className="p-3">{t.hours !== null && t.hours > 0 ? t.hours.toLocaleString() : "—"}</td>
+                  <td className="p-3">{t.total_value !== null && t.total_value > 0 ? `$${t.total_value.toLocaleString()}` : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -376,8 +378,8 @@ function ReviewBody({
                   <td className="p-3"><DiffCell field={t.name} format={v => v} /></td>
                   <td className="p-3"><DiffCell field={t.start} format={v => v} /></td>
                   <td className="p-3"><DiffCell field={t.end} format={v => v} /></td>
-                  <td className="p-3"><DiffCell field={t.hours} format={v => v > 0 ? v.toLocaleString() : "—"} /></td>
-                  <td className="p-3"><DiffCell field={t.total_value} format={v => v > 0 ? `$${v.toLocaleString()}` : "—"} /></td>
+                  <td className="p-3"><DiffCell field={t.hours} format={v => v !== null && v > 0 ? v.toLocaleString() : "—"} /></td>
+                  <td className="p-3"><DiffCell field={t.total_value} format={v => v !== null && v > 0 ? `$${v.toLocaleString()}` : "—"} /></td>
                 </tr>
               ))}
             </tbody>
@@ -428,7 +430,7 @@ function ReviewBody({
                     <td className="p-3 font-semibold text-piche-ink">{t.name}</td>
                     <td className="p-3">{t.start}</td>
                     <td className="p-3">{t.end}</td>
-                    <td className="p-3">{t.hours > 0 ? t.hours.toLocaleString() : "—"}</td>
+                    <td className="p-3">{t.hours !== null && t.hours > 0 ? t.hours.toLocaleString() : "—"}</td>
                     <td className="p-3 text-xs font-semibold text-red-600">Hide from schedule</td>
                   </tr>
                 ))}
@@ -469,7 +471,7 @@ function ReviewBody({
                     <td className="p-3">{t.name}</td>
                     <td className="p-3">{t.start}</td>
                     <td className="p-3">{t.end}</td>
-                    <td className="p-3">{t.hours > 0 ? t.hours.toLocaleString() : "—"}</td>
+                    <td className="p-3">{t.hours !== null && t.hours > 0 ? t.hours.toLocaleString() : "—"}</td>
                   </tr>
                 ))}
                 {diff.total_unchanged_count > diff.unchanged_tasks.length && (

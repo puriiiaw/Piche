@@ -206,9 +206,8 @@ function ProjectDetail({ project }: { project: Project }) {
           <h2 className="text-3xl font-black text-piche-ink">{project.name}</h2>
           <p className="mt-1 text-piche-muted">{formatDate(project.startDate)} to {formatDate(project.endDate)} - {project.area}, {project.cityName}</p>
         </div>
-        <div className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
+        <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
           <label className="field rounded-app border border-piche-line bg-slate-50 p-3">Hours / Worker<input type="number" value={project.dailyHoursPerWorker} onChange={(event) => updateProject(project.id, { dailyHoursPerWorker: Number(event.target.value) })} onBlur={(event) => fetch(`/api/projects/${project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dailyHoursPerWorker: Number(event.target.value) }) })} /></label>
-          <label className="field rounded-app border border-piche-line bg-slate-50 p-3">Avg Rate<input type="number" value={project.avgHourlyRate} onChange={(event) => updateProject(project.id, { avgHourlyRate: Number(event.target.value) })} onBlur={(event) => fetch(`/api/projects/${project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ avgHourlyRate: Number(event.target.value) }) })} /></label>
           <label className="field rounded-app border border-piche-line bg-slate-50 p-3">Max Workers<input type="number" value={project.maxAvailableWorkers} onChange={(event) => updateProject(project.id, { maxAvailableWorkers: Number(event.target.value) })} onBlur={(event) => fetch(`/api/projects/${project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ maxAvailableWorkers: Number(event.target.value) }) })} /></label>
         </div>
       </div>
@@ -324,7 +323,7 @@ function OverviewTab({ project, curve, actualsData, onUploadSuccess }: {
       </div>
       <aside className="grid content-start gap-4 rounded-app border border-piche-line p-5">
         <h3 className="text-xl font-black">Action Required</h3>
-        {missing ? <Risk title="Missing labour hours" text={`${missing} task(s) need labour hours or total value.`} danger /> : <Risk title="Labour inputs complete" text="Every task has labour hours or a derived value." />}
+        {missing ? <Risk title="Missing labour hours" text={`${missing} task(s) are missing hours from the schedule file.`} danger /> : <Risk title="Labour inputs complete" text="Every task has labour hours from the schedule file." />}
         {analysis?.overCapacityPeriods ? <Risk title="Peak crew warning" text={`${analysis.overCapacityPeriods} period(s) exceed ${project.maxAvailableWorkers} workers.`} danger /> : <Risk title="Capacity healthy" text="No project periods exceed the available workforce." />}
       </aside>
     </div>
@@ -818,8 +817,18 @@ function TaskRow({
       <td className="p-3 font-bold">{task.name}{task.labourHoursMissing ? <span className="ml-2"><StatusBadge status="Missing" /></span> : null}</td>
       <td className="p-3">{formatDate(task.startDate)}</td>
       <td className="p-3">{formatDate(task.endDate)}</td>
-      <td className="p-3">{formatNumber(task.totalLabourHours, 2)}<span className="block text-xs text-piche-muted">{task.labourHoursSource}</span></td>
-      <td className="p-3">{task.totalValue ? formatCurrency(task.totalValue) : "-"}</td>
+      <td className="p-3">
+        {task.labourHoursMissing
+          ? <span className="text-piche-muted">—</span>
+          : <>{formatNumber(task.totalLabourHours, 2)}<span className="block text-xs text-piche-muted">from file</span></>
+        }
+      </td>
+      <td className="p-3">
+        {task.totalValue > 0
+          ? <>{formatCurrency(task.totalValue)}<span className="block text-xs text-piche-muted">from file</span></>
+          : <span className="text-piche-muted">—</span>
+        }
+      </td>
       <td className="p-3 capitalize">{task.source}</td>
       <td className="p-3">{task.lastImportedAt ? formatDate(task.lastImportedAt) : "-"}</td>
       <td className="p-3">
@@ -1173,7 +1182,15 @@ function ImportsTab({ project, actualsData, onUploadSuccess }: { project: Projec
                   <td className="p-3">{item.newTasks}</td>
                   <td className="p-3">{item.updatedTasks}</td>
                   <td className="p-3">{item.skipped}</td>
-                  <td className="p-3"><StatusBadge status="Complete" /></td>
+                  <td className="p-3">
+                    {(() => {
+                      const parts = item.status.split("|");
+                      if (parts.length >= 4) {
+                        return <span className="text-xs text-piche-muted">{parts[1]} with hrs · {parts[2]} missing hrs · {parts[3]} with value</span>;
+                      }
+                      return <StatusBadge status="Complete" />;
+                    })()}
+                  </td>
                 </tr>
               ))}
             </tbody>

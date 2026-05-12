@@ -46,7 +46,7 @@ export function serializeProject(project: DbProject): Project {
       newTasks: item.newTasks,
       updatedTasks: item.updatedTasks,
       skipped: item.skipped,
-      status: item.status === "Partial" || item.status === "Failed" ? item.status : "Complete"
+      status: item.status === "Partial" || item.status === "Failed" ? item.status : (item.status as string)
     }))
   };
 }

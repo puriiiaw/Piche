@@ -8,8 +8,8 @@ export type NewTaskDiff = {
   name: string;
   start: string;
   end: string;
-  hours: number;
-  total_value: number;
+  hours: number | null;
+  total_value: number | null;
 };
 
 export type UpdatedTaskDiff = {
@@ -17,8 +17,8 @@ export type UpdatedTaskDiff = {
   name: FieldDiff<string>;
   start: FieldDiff<string>;
   end: FieldDiff<string>;
-  hours: FieldDiff<number>;
-  total_value: FieldDiff<number>;
+  hours: FieldDiff<number | null>;
+  total_value: FieldDiff<number | null>;
 };
 
 export type RemovedTaskDiff = {
@@ -26,7 +26,7 @@ export type RemovedTaskDiff = {
   name: string;
   start: string;
   end: string;
-  hours: number;
+  hours: number | null;
 };
 
 export type UnchangedTaskDiff = {
@@ -34,7 +34,7 @@ export type UnchangedTaskDiff = {
   name: string;
   start: string;
   end: string;
-  hours: number;
+  hours: number | null;
 };
 
 export type DiffResult = {

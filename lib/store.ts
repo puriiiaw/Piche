@@ -319,16 +319,15 @@ function blankTask(sortOrder: number): Task {
   };
 }
 
-function normalizeTaskForProject(project: Project, task: Task): Task {
+function normalizeTaskForProject(_project: Project, task: Task): Task {
   const totalLabourHours = Number(task.totalLabourHours || 0);
   const totalValue = Number(task.totalValue || 0);
-  const derivedHours = totalLabourHours ? totalLabourHours : totalValue / Math.max(1, project.avgHourlyRate);
   return {
     ...task,
-    totalLabourHours: Number(derivedHours || 0),
+    totalLabourHours,
     totalValue,
-    labourHoursMissing: !totalLabourHours && !totalValue,
-    labourHoursSource: totalLabourHours ? "manual" : "derived",
+    labourHoursMissing: totalLabourHours <= 0,
+    labourHoursSource: "manual" as const,
     crewAllocation: {
       ...Object.fromEntries(crewTypes.map((type) => [type.id, 0])),
       ...task.crewAllocation

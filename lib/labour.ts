@@ -6,10 +6,9 @@ export type DateRangeFilter = {
   endDate?: string | null;
 };
 
-export function taskLabourHours(task: Pick<Task, "totalLabourHours" | "totalValue">, avgHourlyRate: number): number {
-  if (task.totalLabourHours > 0) return task.totalLabourHours;
-  if (task.totalValue > 0) return task.totalValue / Math.max(1, avgHourlyRate);
-  return 0;
+export function taskLabourHours(task: Pick<Task, "totalLabourHours" | "labourHoursMissing">): number {
+  if (task.labourHoursMissing) return 0;
+  return task.totalLabourHours;
 }
 
 export function taskWorkingDays(task: Pick<Task, "startDate" | "endDate">): Date[] {
@@ -18,7 +17,7 @@ export function taskWorkingDays(task: Pick<Task, "startDate" | "endDate">): Date
 
 export function taskAverageCrew(task: Task, project: Project): number {
   const days = Math.max(1, taskWorkingDays(task).length);
-  return taskLabourHours(task, project.avgHourlyRate) / days / Math.max(1, project.dailyHoursPerWorker);
+  return taskLabourHours(task) / days / Math.max(1, project.dailyHoursPerWorker);
 }
 
 export function taskRoundedCrew(task: Task, project: Project): number {
@@ -34,11 +33,11 @@ export function taskSeverity(task: Task, project: Project, scenarioCapacity?: nu
 }
 
 export function projectTotalHours(project: Project): number {
-  return project.tasks.reduce((sum, task) => sum + taskLabourHours(task, project.avgHourlyRate), 0);
+  return project.tasks.reduce((sum, task) => sum + taskLabourHours(task), 0);
 }
 
 export function effectiveTaskHours(task: Task, project: Project, crewTypeIds: string[]): number {
-  const totalHours = taskLabourHours(task, project.avgHourlyRate);
+  const totalHours = taskLabourHours(task);
   const allocationTotal = Object.values(task.crewAllocation).reduce((sum, value) => sum + Number(value || 0), 0);
   if (!crewTypeIds.length || !allocationTotal) return totalHours;
   const selectedUnits = crewTypeIds.reduce((sum, id) => sum + Number(task.crewAllocation[id] || 0), 0);
