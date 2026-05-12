@@ -4,57 +4,19 @@ import type { Prisma } from "@prisma/client";
 import { crewTypes } from "@/lib/constants";
 import { getDb } from "@/lib/db";
 import { serializeProject, type DbProject } from "@/lib/project-serializer";
+import type {
+  FieldDiff,
+  NewTaskDiff,
+  UpdatedTaskDiff,
+  RemovedTaskDiff,
+  UnchangedTaskDiff,
+  DiffResult,
+} from "@/lib/import-types";
 
 export const runtime = "nodejs";
 
-// ─── Shared types (also imported by the wizard) ───────────────────────────────
-
-export type FieldDiff<T> = { old: T; new: T; changed: boolean };
-
-export type NewTaskDiff = {
-  task_id: string;
-  name: string;
-  start: string;
-  end: string;
-  hours: number;
-  total_value: number;
-};
-
-export type UpdatedTaskDiff = {
-  task_id: string;
-  name: FieldDiff<string>;
-  start: FieldDiff<string>;
-  end: FieldDiff<string>;
-  hours: FieldDiff<number>;
-  total_value: FieldDiff<number>;
-};
-
-export type RemovedTaskDiff = {
-  task_id: string;
-  name: string;
-  start: string;
-  end: string;
-  hours: number;
-};
-
-export type UnchangedTaskDiff = {
-  task_id: string;
-  name: string;
-  start: string;
-  end: string;
-  hours: number;
-};
-
-export type DiffResult = {
-  mode: "diff";
-  fileName: string;
-  uploadedAt: string;
-  new_tasks: NewTaskDiff[];
-  updated_tasks: UpdatedTaskDiff[];
-  removed_tasks: RemovedTaskDiff[];
-  unchanged_tasks: UnchangedTaskDiff[];
-  total_unchanged_count: number;
-};
+// Re-export so existing import paths still work if needed
+export type { FieldDiff, NewTaskDiff, UpdatedTaskDiff, RemovedTaskDiff, UnchangedTaskDiff, DiffResult };
 
 type ApplyUpdate = {
   task_id: string;

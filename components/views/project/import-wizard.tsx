@@ -16,7 +16,7 @@ import type {
   NewTaskDiff,
   UpdatedTaskDiff,
   RemovedTaskDiff,
-} from "@/app/api/projects/[projectId]/imports/route";
+} from "@/lib/import-types";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
