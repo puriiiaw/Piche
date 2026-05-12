@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowDownUp, CheckSquare, Download, Edit, FileUp, Plus, Square, Trash2, X } from "lucide-react";
+import { CheckSquare, Download, Edit, FileUp, Plus, Square, Trash2, X } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { projectAreas } from "@/lib/constants";
 import { visibleProjectsForState } from "@/lib/access";
@@ -489,15 +489,15 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
       {isLargeProject && !selectedIds.size ? (
         <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={activePageTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-            <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable={false} selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={isLargeProject} onComplete={state.role === "pm" ? handleComplete : undefined} fadingIds={fadingIds} />
+            <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable={false} selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={isLargeProject} onComplete={handleComplete} fadingIds={fadingIds} />
           </SortableContext>
         </DndContext>
       ) : isLargeProject ? (
-        <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable={false} selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={isLargeProject} onComplete={state.role === "pm" ? handleComplete : undefined} fadingIds={fadingIds} />
+        <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable={false} selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={isLargeProject} onComplete={handleComplete} fadingIds={fadingIds} />
       ) : (
         <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={activePageTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-            <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={false} onComplete={state.role === "pm" ? handleComplete : undefined} fadingIds={fadingIds} />
+            <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={false} onComplete={handleComplete} fadingIds={fadingIds} />
           </SortableContext>
         </DndContext>
       )}
@@ -675,7 +675,6 @@ function TaskTable({
   onToggle,
   onToggleAll,
   allSelected,
-  isLargeProject,
   onComplete,
   fadingIds
 }: {
@@ -704,7 +703,6 @@ function TaskTable({
                 </button>
               </th>
             )}
-            <th className="p-3" title={isLargeProject ? "Drag reorder is disabled when more than 100 tasks are loaded" : "Drag to reorder"}><ArrowDownUp size={15} /></th>
             <th className="p-3">Task ID</th>
             <th className="p-3">Name</th>
             <th className="p-3">Start</th>
@@ -719,7 +717,7 @@ function TaskTable({
         <tbody>
           {tasks.map((task) => sortable
             ? <SortableTaskRow key={task.id} task={task} project={project} onEdit={() => onEdit(task)} selected={selectedIds?.has(task.id)} onToggle={onToggle ? () => onToggle(task.id) : undefined} onComplete={onComplete ? () => onComplete(task) : undefined} fading={fadingIds?.has(task.id)} />
-            : <TaskRow key={task.id} task={task} project={project} onEdit={() => onEdit(task)} selected={selectedIds?.has(task.id)} onToggle={onToggle ? () => onToggle(task.id) : undefined} dragDisabled={isLargeProject} onComplete={onComplete ? () => onComplete(task) : undefined} fading={fadingIds?.has(task.id)} />
+            : <TaskRow key={task.id} task={task} project={project} onEdit={() => onEdit(task)} selected={selectedIds?.has(task.id)} onToggle={onToggle ? () => onToggle(task.id) : undefined} onComplete={onComplete ? () => onComplete(task) : undefined} fading={fadingIds?.has(task.id)} />
           )}
         </tbody>
       </table>
@@ -745,7 +743,6 @@ function TaskRow({
   style,
   selected,
   onToggle,
-  dragDisabled,
   onComplete,
   fading
 }: {
@@ -757,7 +754,6 @@ function TaskRow({
   style?: CSSProperties;
   selected?: boolean;
   onToggle?: () => void;
-  dragDisabled?: boolean;
   onComplete?: () => void;
   fading?: boolean;
 }) {
@@ -785,7 +781,6 @@ function TaskRow({
           </button>
         </td>
       )}
-      <td className="p-3 text-slate-400"><button {...dragProps} className="grid h-8 w-8 place-items-center rounded-app border border-piche-line disabled:opacity-40" title={dragDisabled ? "Drag reorder is disabled when more than 100 tasks are loaded" : dragProps ? "Drag to reorder" : "Reorder disabled"} disabled={!dragProps || dragDisabled}><ArrowDownUp size={15} /></button></td>
       <td className="p-3 font-black">{task.id}</td>
       <td className="p-3 font-bold">{task.name}{task.labourHoursMissing ? <span className="ml-2"><StatusBadge status="Missing" /></span> : null}</td>
       <td className="p-3">{formatDate(task.startDate)}</td>
