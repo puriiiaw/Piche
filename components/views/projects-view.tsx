@@ -1126,63 +1126,64 @@ function ImportsTab({ project, actualsData, onUploadSuccess }: { project: Projec
   };
 
   return (
-    <div className="grid gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <div><h3 className="text-xl font-black">Schedule Imports</h3><p className="text-sm text-piche-muted">Imports update names and dates only. Labour hours are never overwritten.</p></div>
-        <button className="btn-primary" onClick={() => setOpen(true)}><FileUp size={16} /> Import Schedule</button>
-      </div>
-      <div className="overflow-auto rounded-app border border-piche-line">
-        <table className="w-full min-w-[820px] text-left">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="p-3">File</th>
-              <th className="p-3">Label</th>
-              <th className="p-3">Date</th>
-              <th className="p-3">New</th>
-              <th className="p-3">Updated</th>
-              <th className="p-3">Skipped</th>
-              <th className="p-3">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {project.scheduleImports.map((item) => (
-              <tr key={item.id} className="border-t border-piche-line">
-                <td className="p-3">
-                  <div className="flex items-center gap-2">
-                    <div>
-                      <strong className="block font-bold text-piche-ink">{item.fileName}</strong>
-                    </div>
-                    <span
-                      className="flex-shrink-0 cursor-help rounded-full border border-slate-200 bg-slate-100 px-1.5 text-xs font-black text-slate-500"
-                      title={`Internal batch ID: ${item.id}`}
-                    >
-                      ⓘ
-                    </span>
-                  </div>
-                </td>
-                <td className="p-3">
-                  <input
-                    className="input min-w-[160px] text-sm"
-                    placeholder="Add a label…"
-                    defaultValue={labels[item.id] || ""}
-                    onBlur={(e) => saveLabel(item.id, e.target.value.trim())}
-                  />
-                </td>
-                <td className="p-3">{formatDate(item.importedAt)}</td>
-                <td className="p-3">{item.newTasks}</td>
-                <td className="p-3">{item.updatedTasks}</td>
-                <td className="p-3">{item.skipped}</td>
-                <td className="p-3"><StatusBadge status="Complete" /></td>
+    <>
+      <div className="grid gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <div><h3 className="text-xl font-black">Schedule Imports</h3><p className="text-sm text-piche-muted">Imports update names and dates only. Labour hours are never overwritten.</p></div>
+          <button className="btn-primary" onClick={() => setOpen(true)}><FileUp size={16} /> Import Schedule</button>
+        </div>
+        <div className="overflow-auto rounded-app border border-piche-line">
+          <table className="w-full min-w-[820px] text-left">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+              <tr>
+                <th className="p-3">File</th>
+                <th className="p-3">Label</th>
+                <th className="p-3">Date</th>
+                <th className="p-3">New</th>
+                <th className="p-3">Updated</th>
+                <th className="p-3">Skipped</th>
+                <th className="p-3">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {project.scheduleImports.map((item) => (
+                <tr key={item.id} className="border-t border-piche-line">
+                  <td className="p-3">
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <strong className="block font-bold text-piche-ink">{item.fileName}</strong>
+                      </div>
+                      <span
+                        className="flex-shrink-0 cursor-help rounded-full border border-slate-200 bg-slate-100 px-1.5 text-xs font-black text-slate-500"
+                        title={`Internal batch ID: ${item.id}`}
+                      >
+                        ⓘ
+                      </span>
+                    </div>
+                  </td>
+                  <td className="p-3">
+                    <input
+                      className="input min-w-[160px] text-sm"
+                      placeholder="Add a label…"
+                      defaultValue={labels[item.id] || ""}
+                      onBlur={(e) => saveLabel(item.id, e.target.value.trim())}
+                    />
+                  </td>
+                  <td className="p-3">{formatDate(item.importedAt)}</td>
+                  <td className="p-3">{item.newTasks}</td>
+                  <td className="p-3">{item.updatedTasks}</td>
+                  <td className="p-3">{item.skipped}</td>
+                  <td className="p-3"><StatusBadge status="Complete" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <ImportWizard open={open} onOpenChange={setOpen} project={project} />
       </div>
-      <ImportWizard open={open} onOpenChange={setOpen} project={project} />
-    </div>
 
-    <TimesheetImports project={project} actualsData={actualsData} onUploadSuccess={onUploadSuccess} />
-  </div>
+      <TimesheetImports project={project} actualsData={actualsData} onUploadSuccess={onUploadSuccess} />
+    </>
   );
 }
 
