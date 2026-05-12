@@ -118,9 +118,25 @@ model Project {
   maxAvailableWorkers Int
   tasks               Task[]
   scheduleImports     ScheduleImport[]
+  actualHours         ActualHours[]
   auditEvents         AuditEvent[]
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
+}
+
+model ActualHours {
+  id               String   @id @default(cuid())
+  projectId        String
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  month            String   // "YYYY-MM"
+  totalHours       Float
+  uploadedBy       String   // display name stored at upload time
+  uploadedAt       DateTime @default(now())
+  originalFilename String
+  rowCount         Int
+
+  @@unique([projectId, month])
+  @@index([projectId])
 }
 
 model Task {

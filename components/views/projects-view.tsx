@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ChangeEvent, type CSSProperties } from "react";
 import { toast } from "sonner";
 import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CheckSquare, Download, Edit, FileUp, Plus, Square, Trash2, X } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CheckSquare, ChevronDown, ChevronUp, Download, Edit, FileUp, Plus, Square, Trash2, Upload, X } from "lucide-react";
+import { Area, AreaChart, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { projectAreas } from "@/lib/constants";
 import { visibleProjectsForState } from "@/lib/access";
 import { formatDate } from "@/lib/dates";
@@ -41,6 +41,21 @@ type LabourCurvePayload = {
 };
 
 type LabourCurveHook = { data: LabourCurvePayload | null; loading: boolean; error: string };
+
+type ActualHoursRecord = {
+  id: string;
+  month: string;
+  totalHours: number;
+  uploadedAt: string;
+  uploadedBy: string;
+  originalFilename: string;
+  rowCount: number;
+};
+
+type ActualsApiResponse = {
+  actuals: ActualHoursRecord[];
+  planned: { month: string; totalHours: number }[];
+};
 
 export function ProjectsView() {
   const state = useAppStore();
@@ -173,6 +188,16 @@ function ProjectDetail({ project }: { project: Project }) {
   const curve = useLabourCurve(curveUrl);
   const analysis = curve.data?.analysis;
 
+  // ── Planned vs Actual state ───────────────────────────────────────────────
+  const [actualsData, setActualsData] = useState<ActualsApiResponse | null>(null);
+  const refreshActuals = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${project.id}/actual-hours`);
+      if (res.ok) setActualsData(await res.json());
+    } catch { /* silent */ }
+  }, [project.id]);
+  useEffect(() => { refreshActuals(); }, [refreshActuals]);
+
   return (
     <section className="card grid gap-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-piche-line pb-5">
@@ -244,21 +269,27 @@ function ProjectDetail({ project }: { project: Project }) {
         </div>
       )}
 
-      {state.activeProjectTab === "overview" && <OverviewTab project={project} curve={curve} />}
+      {state.activeProjectTab === "overview" && <OverviewTab project={project} curve={curve} actualsData={actualsData} onUploadSuccess={refreshActuals} />}
       {state.activeProjectTab === "tasks" && <TasksTab project={project} tasks={filteredTasks} />}
       {state.activeProjectTab === "schedule" && <ScheduleTab project={project} tasks={filteredTasks} />}
       {state.activeProjectTab === "crew" && <CrewTab project={project} tasks={filteredTasks} />}
-      {state.activeProjectTab === "imports" && <ImportsTab project={project} />}
+      {state.activeProjectTab === "imports" && <ImportsTab project={project} actualsData={actualsData} onUploadSuccess={refreshActuals} />}
       {state.activeProjectTab === "archive" && <ArchiveTab project={project} />}
     </section>
   );
 }
 
-function OverviewTab({ project, curve }: { project: Project; curve: LabourCurveHook }) {
+function OverviewTab({ project, curve, actualsData, onUploadSuccess }: {
+  project: Project;
+  curve: LabourCurveHook;
+  actualsData: ActualsApiResponse | null;
+  onUploadSuccess: () => Promise<void>;
+}) {
   const missing = project.tasks.filter((task) => task.labourHoursMissing).length;
   const analysis = curve.data?.analysis;
 
   return (
+    <div className="grid gap-6">
     <div className="grid grid-cols-[minmax(0,1fr)_340px] gap-6 max-xl:grid-cols-1">
       <div className="rounded-app border border-piche-line p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -296,6 +327,8 @@ function OverviewTab({ project, curve }: { project: Project; curve: LabourCurveH
         {missing ? <Risk title="Missing labour hours" text={`${missing} task(s) need labour hours or total value.`} danger /> : <Risk title="Labour inputs complete" text="Every task has labour hours or a derived value." />}
         {analysis?.overCapacityPeriods ? <Risk title="Peak crew warning" text={`${analysis.overCapacityPeriods} period(s) exceed ${project.maxAvailableWorkers} workers.`} danger /> : <Risk title="Capacity healthy" text="No project periods exceed the available workforce." />}
       </aside>
+    </div>
+    <PlannedVsActualSection project={project} actualsData={actualsData} onUploadSuccess={onUploadSuccess} />
     </div>
   );
 }
@@ -1075,7 +1108,7 @@ function CrewTab({ project, tasks }: { project: Project; tasks: Task[] }) {
   );
 }
 
-function ImportsTab({ project }: { project: Project }) {
+function ImportsTab({ project, actualsData, onUploadSuccess }: { project: Project; actualsData: ActualsApiResponse | null; onUploadSuccess: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   // Labels are stored in localStorage keyed by import batch ID
   const [labels, setLabels] = useState<Record<string, string>>(() => {
@@ -1147,6 +1180,9 @@ function ImportsTab({ project }: { project: Project }) {
       </div>
       <ImportWizard open={open} onOpenChange={setOpen} project={project} />
     </div>
+
+    <TimesheetImports project={project} actualsData={actualsData} onUploadSuccess={onUploadSuccess} />
+  </div>
   );
 }
 
@@ -1256,4 +1292,377 @@ function MiniKpi({ label, value, loading }: { label: string; value: string | num
 
 function Risk({ title, text, danger }: { title: string; text: string; danger?: boolean }) {
   return <article className={`rounded-app border p-4 ${danger ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}><strong>{title}</strong><p className="mt-1 text-sm text-piche-muted">{text}</p></article>;
+}
+
+// ─── Shared timesheet upload hook ────────────────────────────────────────────
+function useTimesheetUpload(projectId: string, onSuccess: () => Promise<void>) {
+  const [uploading, setUploading] = useState(false);
+  const [confirmState, setConfirmState] = useState<{
+    file: File; month: string; existingHours: number; newHours: number;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadFile = async (file: File, replace = false) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(
+        `/api/projects/${projectId}/actual-hours/upload${replace ? "?replace=true" : ""}`,
+        { method: "POST", body: fd }
+      );
+      const data = await res.json();
+
+      if (res.status === 409 && data.conflict) {
+        setConfirmState({ file, month: data.month, existingHours: data.existingHours, newHours: data.newHours });
+        return;
+      }
+      if (!res.ok) {
+        toast.error(data.error || "Upload failed.");
+        return;
+      }
+      const monthLabel = new Date(data.month + "-01T00:00:00")
+        .toLocaleDateString("en-CA", { month: "long", year: "numeric" });
+      toast.success(`${monthLabel} timesheet uploaded — ${Number(data.totalHours).toLocaleString()} hrs recorded`);
+      await onSuccess();
+    } catch {
+      toast.error("Upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    await uploadFile(file);
+  };
+
+  const confirmReplace = async () => {
+    if (!confirmState) return;
+    const file = confirmState.file;
+    setConfirmState(null);
+    await uploadFile(file, true);
+  };
+
+  return { uploading, confirmState, setConfirmState, fileInputRef, handleFileChange, confirmReplace };
+}
+
+// ─── PlannedVsActualSection (Overview tab) ───────────────────────────────────
+function PlannedVsActualSection({ project, actualsData, onUploadSuccess }: {
+  project: Project;
+  actualsData: ActualsApiResponse | null;
+  onUploadSuccess: () => Promise<void>;
+}) {
+  const state = useAppStore();
+  const { uploading, confirmState, setConfirmState, fileInputRef, handleFileChange, confirmReplace } =
+    useTimesheetUpload(project.id, onUploadSuccess);
+  const [expandHistory, setExpandHistory] = useState(false);
+
+  const todayMonth = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  })();
+
+  const chartData = useMemo(() => {
+    if (!actualsData) return [];
+    const monthSet = new Set([
+      ...actualsData.planned.map(p => p.month),
+      ...actualsData.actuals.map(a => a.month),
+    ]);
+    return Array.from(monthSet).sort().map(month => {
+      const [yr, mo] = month.split("-");
+      const label = new Date(Number(yr), Number(mo) - 1, 1)
+        .toLocaleDateString("en-CA", { month: "short", year: "numeric" });
+      const planned = actualsData.planned.find(p => p.month === month)?.totalHours ?? null;
+      const actual  = actualsData.actuals.find(a => a.month === month)?.totalHours ?? null;
+      return { month, label, planned, actual };
+    });
+  }, [actualsData]);
+
+  const todayLabel = chartData.find(d => d.month === todayMonth)?.label ?? null;
+  const hasActuals = (actualsData?.actuals.length ?? 0) > 0;
+
+  return (
+    <div className="rounded-app border border-piche-line p-5">
+      {/* Header */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-xl font-black">Planned vs Actual Hours</h3>
+          <p className="text-sm text-piche-muted">Monthly comparison — upload a timesheet each month to track progress</p>
+        </div>
+        <button className="btn-primary" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+          <Upload size={15} />
+          {uploading ? "Reading file…" : "Upload Timesheet"}
+        </button>
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
+      </div>
+
+      {/* Chart */}
+      <div className="relative h-[280px]">
+        {!hasActuals && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-app bg-slate-50/80">
+            <p className="text-sm font-semibold text-piche-muted">No timesheet data uploaded yet</p>
+          </div>
+        )}
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke="#e5e7eb" />
+            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip formatter={(value: unknown, name: string) => [
+              typeof value === "number" ? value.toLocaleString() + " hrs" : "—", name
+            ]} />
+            <Legend />
+            <Line
+              dataKey="planned"
+              name="Planned"
+              stroke="#c7b157"
+              strokeDasharray="6 3"
+              strokeWidth={2}
+              dot={false}
+              connectNulls
+              isAnimationActive={false}
+            />
+            <Line
+              dataKey="actual"
+              name="Actual"
+              stroke="#3b82f6"
+              strokeWidth={2}
+              connectNulls
+              isAnimationActive={false}
+              dot={(dotProps) => {
+                const { payload, cx, cy } = dotProps as {
+                  payload: { actual: number | null; planned: number | null };
+                  cx: number; cy: number;
+                };
+                if (payload.actual === null || cy === undefined) return <g key={`dot-${cx}`} />;
+                const over = payload.planned !== null && payload.actual > payload.planned;
+                return (
+                  <circle
+                    key={`dot-${cx}`}
+                    cx={cx} cy={cy} r={4}
+                    fill={over ? "#c7b157" : "#3b82f6"}
+                    stroke="white" strokeWidth={1.5}
+                  />
+                );
+              }}
+            />
+            {todayLabel && (
+              <ReferenceLine
+                x={todayLabel}
+                stroke="#94a3b8"
+                strokeDasharray="4 4"
+                label={{ value: "Today", position: "insideTopRight", fontSize: 10, fill: "#64748b" }}
+              />
+            )}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Upload history (collapsible) */}
+      {hasActuals && (
+        <div className="mt-4">
+          <button
+            className="flex items-center gap-2 text-sm font-black text-piche-muted hover:text-piche-ink"
+            onClick={() => setExpandHistory(h => !h)}
+          >
+            {expandHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            Upload history ({actualsData!.actuals.length} file{actualsData!.actuals.length !== 1 ? "s" : ""})
+          </button>
+          {expandHistory && (
+            <div className="mt-3 overflow-auto rounded-app border border-piche-line">
+              <table className="w-full min-w-[700px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="p-3">Month</th>
+                    <th className="p-3">Total Hours</th>
+                    <th className="p-3">Filename</th>
+                    <th className="p-3">Uploaded By</th>
+                    <th className="p-3">Date</th>
+                    {(state.role === "admin" || state.role === "vp") && <th className="p-3" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {actualsData!.actuals.map(a => (
+                    <tr key={a.id} className="border-t border-piche-line">
+                      <td className="p-3 font-semibold">{a.month}</td>
+                      <td className="p-3">{a.totalHours.toLocaleString()}</td>
+                      <td className="p-3 text-piche-muted">{a.originalFilename}</td>
+                      <td className="p-3">{a.uploadedBy}</td>
+                      <td className="p-3">{new Date(a.uploadedAt).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })}</td>
+                      {(state.role === "admin" || state.role === "vp") && (
+                        <td className="p-3">
+                          <DeleteActualButton projectId={project.id} month={a.month} onDeleted={onUploadSuccess} />
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Confirm replace dialog */}
+      {confirmState && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="card w-full max-w-sm p-6">
+            <h2 className="text-xl font-black text-piche-ink">Replace existing timesheet?</h2>
+            <p className="mt-2 text-piche-muted">
+              A timesheet for <strong>{confirmState.month}</strong> already exists ({confirmState.existingHours.toLocaleString()} hrs).
+              Replace it with the new file ({confirmState.newHours.toLocaleString()} hrs)?
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button className="btn-secondary" onClick={() => setConfirmState(null)}>Cancel</button>
+              <button className="btn-primary" onClick={confirmReplace}>Replace</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── TimesheetImports (Imports tab section) ───────────────────────────────────
+function TimesheetImports({ project, actualsData, onUploadSuccess }: {
+  project: Project;
+  actualsData: ActualsApiResponse | null;
+  onUploadSuccess: () => Promise<void>;
+}) {
+  const state = useAppStore();
+  const { uploading, confirmState, setConfirmState, fileInputRef, handleFileChange, confirmReplace } =
+    useTimesheetUpload(project.id, onUploadSuccess);
+
+  return (
+    <div className="mt-8 grid gap-4 border-t border-piche-line pt-8">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-xl font-black">Timesheet Imports</h3>
+          <p className="text-sm text-piche-muted">Upload monthly timesheet Excel files to track actual hours vs planned.</p>
+        </div>
+        <button className="btn-primary" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+          <Upload size={16} />
+          {uploading ? "Reading file…" : "Upload Timesheet"}
+        </button>
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
+      </div>
+
+      {(actualsData?.actuals.length ?? 0) === 0 ? (
+        <div className="rounded-app border border-piche-line bg-slate-50 p-8 text-center text-piche-muted">
+          No timesheet imports yet. Upload a timesheet to start tracking actuals.
+        </div>
+      ) : (
+        <div className="overflow-auto rounded-app border border-piche-line">
+          <table className="w-full min-w-[900px] text-left">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+              <tr>
+                <th className="p-3">File</th>
+                <th className="p-3">Month</th>
+                <th className="p-3">Total Hours</th>
+                <th className="p-3">Rows Processed</th>
+                <th className="p-3">Uploaded By</th>
+                <th className="p-3">Date</th>
+                <th className="p-3">Status</th>
+                {(state.role === "admin" || state.role === "vp") && <th className="p-3" />}
+              </tr>
+            </thead>
+            <tbody>
+              {actualsData!.actuals.map(a => (
+                <tr key={a.id} className="border-t border-piche-line">
+                  <td className="p-3"><strong className="block font-bold text-piche-ink">{a.originalFilename}</strong></td>
+                  <td className="p-3 font-semibold">{a.month}</td>
+                  <td className="p-3">{a.totalHours.toLocaleString()}</td>
+                  <td className="p-3">{a.rowCount.toLocaleString()}</td>
+                  <td className="p-3">{a.uploadedBy}</td>
+                  <td className="p-3">{new Date(a.uploadedAt).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })}</td>
+                  <td className="p-3"><StatusBadge status="Complete" /></td>
+                  {(state.role === "admin" || state.role === "vp") && (
+                    <td className="p-3">
+                      <DeleteActualButton projectId={project.id} month={a.month} onDeleted={onUploadSuccess} />
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Confirm replace dialog */}
+      {confirmState && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="card w-full max-w-sm p-6">
+            <h2 className="text-xl font-black text-piche-ink">Replace existing timesheet?</h2>
+            <p className="mt-2 text-piche-muted">
+              A timesheet for <strong>{confirmState.month}</strong> already exists ({confirmState.existingHours.toLocaleString()} hrs).
+              Replace it with the new file ({confirmState.newHours.toLocaleString()} hrs)?
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button className="btn-secondary" onClick={() => setConfirmState(null)}>Cancel</button>
+              <button className="btn-primary" onClick={confirmReplace}>Replace</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Delete actual hours button (Admin/VP only) ───────────────────────────────
+function DeleteActualButton({ projectId, month, onDeleted }: {
+  projectId: string;
+  month: string;
+  onDeleted: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  return (
+    <>
+      <button
+        className="grid h-8 w-8 place-items-center rounded-app border border-piche-line text-red-700 hover:bg-red-50"
+        onClick={() => setOpen(true)}
+        title="Delete timesheet entry"
+      >
+        <Trash2 size={14} />
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="card w-full max-w-sm p-6">
+            <h2 className="text-xl font-black text-piche-ink">Delete timesheet?</h2>
+            <p className="mt-2 text-piche-muted">
+              This will permanently remove the timesheet for <strong>{month}</strong>. This cannot be undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button className="btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
+              <button
+                className="btn-primary bg-red-700 hover:bg-red-800"
+                disabled={deleting}
+                onClick={async () => {
+                  setDeleting(true);
+                  try {
+                    const res = await fetch(`/api/projects/${projectId}/actual-hours/${month}`, { method: "DELETE" });
+                    if (res.ok) {
+                      setOpen(false);
+                      toast.success(`Timesheet for ${month} deleted.`);
+                      await onDeleted();
+                    } else {
+                      toast.error("Could not delete timesheet.");
+                    }
+                  } finally {
+                    setDeleting(false);
+                  }
+                }}
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
