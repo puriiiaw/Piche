@@ -1295,27 +1295,107 @@ function Risk({ title, text, danger }: { title: string; text: string; danger?: b
   return <article className={`rounded-app border p-4 ${danger ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}><strong>{title}</strong><p className="mt-1 text-sm text-piche-muted">{text}</p></article>;
 }
 
+// ─── Column picker modal ──────────────────────────────────────────────────────
+function ColumnPickerModal({
+  columns, guessHours, guessDate, onConfirm, onCancel,
+}: {
+  columns: string[];
+  guessHours: string | null;
+  guessDate: string | null;
+  onConfirm: (hoursCol: string, dateCol: string) => void;
+  onCancel: () => void;
+}) {
+  const [hoursCol, setHoursCol] = useState(guessHours ?? "");
+  const [dateCol,  setDateCol]  = useState(guessDate  ?? "");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-app border border-piche-line bg-white p-6 shadow-xl">
+        <h3 className="mb-1 text-lg font-black text-piche-ink">Map Columns</h3>
+        <p className="mb-5 text-sm text-piche-muted">
+          We couldn&apos;t auto-detect the required columns. Please select which columns in your file
+          correspond to <strong>Total Hours</strong> and <strong>Week-Ending Date</strong>.
+        </p>
+
+        <label className="mb-1 block text-sm font-semibold text-piche-ink">Total Hours column</label>
+        <select
+          className="input mb-4 w-full"
+          value={hoursCol}
+          onChange={e => setHoursCol(e.target.value)}
+        >
+          <option value="">— select a column —</option>
+          {columns.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+
+        <label className="mb-1 block text-sm font-semibold text-piche-ink">Week-Ending Date column</label>
+        <select
+          className="input mb-6 w-full"
+          value={dateCol}
+          onChange={e => setDateCol(e.target.value)}
+        >
+          <option value="">— select a column —</option>
+          {columns.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+
+        <div className="flex justify-end gap-3">
+          <button className="btn-secondary" onClick={onCancel}>Cancel</button>
+          <button
+            className="btn-primary"
+            disabled={!hoursCol || !dateCol}
+            onClick={() => onConfirm(hoursCol, dateCol)}
+          >
+            Upload
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Shared timesheet upload hook ────────────────────────────────────────────
 function useTimesheetUpload(projectId: string, onSuccess: () => Promise<void>) {
   const [uploading, setUploading] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     file: File; month: string; existingHours: number; newHours: number;
+    hoursCol: string; dateCol: string;
+  } | null>(null);
+  const [columnState, setColumnState] = useState<{
+    file: File; columns: string[]; guessHours: string | null; guessDate: string | null;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const uploadFile = async (file: File, replace = false) => {
+  const uploadFile = async (
+    file: File,
+    replace = false,
+    hoursCol?: string,
+    dateCol?: string
+  ) => {
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(
-        `/api/projects/${projectId}/actual-hours/upload${replace ? "?replace=true" : ""}`,
-        { method: "POST", body: fd }
-      );
+
+      const qs = new URLSearchParams();
+      if (replace)   qs.set("replace", "true");
+      if (hoursCol)  qs.set("hoursColumn", hoursCol);
+      if (dateCol)   qs.set("dateColumn",  dateCol);
+      const query = qs.toString() ? `?${qs}` : "";
+
+      const res  = await fetch(`/api/projects/${projectId}/actual-hours/upload${query}`, { method: "POST", body: fd });
       const data = await res.json();
 
+      // Server couldn't auto-detect columns → show picker
+      if (res.status === 422 && data.needsColumnSelection) {
+        setColumnState({ file, columns: data.columns, guessHours: data.guessHours, guessDate: data.guessDate });
+        return;
+      }
+
       if (res.status === 409 && data.conflict) {
-        setConfirmState({ file, month: data.month, existingHours: data.existingHours, newHours: data.newHours });
+        setConfirmState({
+          file, month: data.month,
+          existingHours: data.existingHours, newHours: data.newHours,
+          hoursCol: hoursCol ?? "", dateCol: dateCol ?? "",
+        });
         return;
       }
       if (!res.ok) {
@@ -1342,12 +1422,24 @@ function useTimesheetUpload(projectId: string, onSuccess: () => Promise<void>) {
 
   const confirmReplace = async () => {
     if (!confirmState) return;
-    const file = confirmState.file;
+    const { file, hoursCol, dateCol } = confirmState;
     setConfirmState(null);
-    await uploadFile(file, true);
+    await uploadFile(file, true, hoursCol || undefined, dateCol || undefined);
   };
 
-  return { uploading, confirmState, setConfirmState, fileInputRef, handleFileChange, confirmReplace };
+  const confirmColumns = async (hoursCol: string, dateCol: string) => {
+    if (!columnState) return;
+    const file = columnState.file;
+    setColumnState(null);
+    await uploadFile(file, false, hoursCol, dateCol);
+  };
+
+  const cancelColumns = () => setColumnState(null);
+
+  return {
+    uploading, confirmState, setConfirmState, columnState,
+    fileInputRef, handleFileChange, confirmReplace, confirmColumns, cancelColumns,
+  };
 }
 
 // ─── PlannedVsActualSection (Overview tab) ───────────────────────────────────
@@ -1357,8 +1449,10 @@ function PlannedVsActualSection({ project, actualsData, onUploadSuccess }: {
   onUploadSuccess: () => Promise<void>;
 }) {
   const state = useAppStore();
-  const { uploading, confirmState, setConfirmState, fileInputRef, handleFileChange, confirmReplace } =
-    useTimesheetUpload(project.id, onUploadSuccess);
+  const {
+    uploading, confirmState, setConfirmState, columnState,
+    fileInputRef, handleFileChange, confirmReplace, confirmColumns, cancelColumns,
+  } = useTimesheetUpload(project.id, onUploadSuccess);
   const [expandHistory, setExpandHistory] = useState(false);
 
   const todayMonth = (() => {
@@ -1507,6 +1601,17 @@ function PlannedVsActualSection({ project, actualsData, onUploadSuccess }: {
         </div>
       )}
 
+      {/* Column picker modal */}
+      {columnState && (
+        <ColumnPickerModal
+          columns={columnState.columns}
+          guessHours={columnState.guessHours}
+          guessDate={columnState.guessDate}
+          onConfirm={confirmColumns}
+          onCancel={cancelColumns}
+        />
+      )}
+
       {/* Confirm replace dialog */}
       {confirmState && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -1534,8 +1639,10 @@ function TimesheetImports({ project, actualsData, onUploadSuccess }: {
   onUploadSuccess: () => Promise<void>;
 }) {
   const state = useAppStore();
-  const { uploading, confirmState, setConfirmState, fileInputRef, handleFileChange, confirmReplace } =
-    useTimesheetUpload(project.id, onUploadSuccess);
+  const {
+    uploading, confirmState, setConfirmState, columnState,
+    fileInputRef, handleFileChange, confirmReplace, confirmColumns, cancelColumns,
+  } = useTimesheetUpload(project.id, onUploadSuccess);
 
   return (
     <div className="mt-8 grid gap-4 border-t border-piche-line pt-8">
@@ -1590,6 +1697,17 @@ function TimesheetImports({ project, actualsData, onUploadSuccess }: {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Column picker modal */}
+      {columnState && (
+        <ColumnPickerModal
+          columns={columnState.columns}
+          guessHours={columnState.guessHours}
+          guessDate={columnState.guessDate}
+          onConfirm={confirmColumns}
+          onCancel={cancelColumns}
+        />
       )}
 
       {/* Confirm replace dialog */}

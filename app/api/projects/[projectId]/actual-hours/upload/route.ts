@@ -27,7 +27,10 @@ export async function POST(
   }
 
   const url = new URL(request.url);
-  const replace = url.searchParams.get("replace") === "true";
+  const replace       = url.searchParams.get("replace") === "true";
+  const preview       = url.searchParams.get("preview") === "true";
+  const hoursColParam = url.searchParams.get("hoursColumn");   // explicit column override
+  const dateColParam  = url.searchParams.get("dateColumn");    // explicit column override
 
   // Parse multipart form
   let formData: FormData;
@@ -61,22 +64,52 @@ export async function POST(
     return NextResponse.json({ error: "The uploaded file is empty." }, { status: 400 });
   }
 
-  // Find "Total Hour" column (case-insensitive exact match)
-  const firstRow = rows[0];
-  const totalHourKey = Object.keys(firstRow).find(
-    k => k.trim().toLowerCase() === "total hour"
-  );
-  if (!totalHourKey) {
-    return NextResponse.json(
-      { error: "Column 'Total Hour' not found in the uploaded file." },
-      { status: 400 }
-    );
+  const columns = Object.keys(rows[0]);
+
+  // ── PREVIEW MODE: just return column names ────────────────────────────────
+  if (preview) {
+    // Auto-detect best guesses to pre-select in the UI
+    const guessHours = columns.find(k => k.trim().toLowerCase() === "total hour")
+      ?? columns.find(k => /hour|hrs|hours/i.test(k))
+      ?? null;
+    const guessDate  = columns.find(k => k.trim().toLowerCase().replace(/\s+/g, " ") === "weekending date")
+      ?? columns.find(k => /week.?end|date/i.test(k))
+      ?? null;
+
+    return NextResponse.json({ columns, guessHours, guessDate });
   }
 
-  // Find "WeekEnding Date" column (case-insensitive, collapse spaces)
-  const weekEndingKey = Object.keys(firstRow).find(
-    k => k.trim().toLowerCase().replace(/\s+/g, " ") === "weekending date"
-  );
+  // ── PROCESS MODE ──────────────────────────────────────────────────────────
+
+  // Resolve hours column: explicit param > auto-detect > error
+  let totalHourKey: string | undefined;
+  if (hoursColParam) {
+    totalHourKey = columns.find(k => k === hoursColParam);
+    if (!totalHourKey) {
+      return NextResponse.json({ error: `Column '${hoursColParam}' not found in the file.` }, { status: 400 });
+    }
+  } else {
+    totalHourKey = columns.find(k => k.trim().toLowerCase() === "total hour");
+    if (!totalHourKey) {
+      // Return the columns so the UI can prompt the user
+      const guessHours = columns.find(k => /hour|hrs|hours/i.test(k)) ?? null;
+      const guessDate  = columns.find(k => /week.?end|date/i.test(k)) ?? null;
+      return NextResponse.json(
+        { needsColumnSelection: true, columns, guessHours, guessDate },
+        { status: 422 }
+      );
+    }
+  }
+
+  // Resolve date column
+  let weekEndingKey: string | undefined;
+  if (dateColParam) {
+    weekEndingKey = columns.find(k => k === dateColParam) ?? undefined;
+  } else {
+    weekEndingKey = columns.find(
+      k => k.trim().toLowerCase().replace(/\s+/g, " ") === "weekending date"
+    );
+  }
 
   // Sum Total Hour column and find latest WeekEnding Date
   let totalHours = 0;
@@ -84,7 +117,6 @@ export async function POST(
   let latestDateStr: string | null = null;
 
   for (const row of rows) {
-    // Sum hours
     const rawVal = row[totalHourKey];
     const num = typeof rawVal === "number"
       ? rawVal
@@ -94,15 +126,11 @@ export async function POST(
       rowCount++;
     }
 
-    // Track latest WeekEnding Date
     if (weekEndingKey) {
       const dateVal = row[weekEndingKey];
       if (dateVal) {
         const s = String(dateVal);
-        // Normalise date strings for comparison (YYYY-MM-DD sorts lexicographically)
-        if (!latestDateStr || s > latestDateStr) {
-          latestDateStr = s;
-        }
+        if (!latestDateStr || s > latestDateStr) latestDateStr = s;
       }
     }
   }
@@ -110,25 +138,23 @@ export async function POST(
   // Derive month from latest WeekEnding Date
   let month: string;
   if (latestDateStr) {
-    // Try ISO YYYY-MM-DD first
     const isoMatch = latestDateStr.match(/^(\d{4})-(\d{2})-\d{2}/);
     if (isoMatch) {
       month = `${isoMatch[1]}-${isoMatch[2]}`;
     } else {
-      // Try parsing as generic date
       const parsed = new Date(latestDateStr);
       if (!isNaN(parsed.getTime())) {
         month = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
       } else {
         return NextResponse.json(
-          { error: "Could not parse a date from the 'WeekEnding Date' column." },
+          { error: "Could not parse a date from the selected date column." },
           { status: 400 }
         );
       }
     }
   } else {
     return NextResponse.json(
-      { error: "'WeekEnding Date' column not found or empty — cannot determine the month." },
+      { error: "No date column selected or it is empty — cannot determine the month." },
       { status: 400 }
     );
   }
