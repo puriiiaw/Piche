@@ -45,6 +45,7 @@ type ParsedRow = {
   name: string;
   startDate: Date;
   endDate: Date;
+  totalHours: number;
   totalValue: number;
 };
 
@@ -113,6 +114,7 @@ async function computeDiff(request: Request, projectId: string) {
   for (const row of parsed) {
     const existing = dbById.get(row.id);
     const derivedHours = row.totalValue > 0 ? row.totalValue / avgRate : 0;
+    const importHours = row.totalHours > 0 ? row.totalHours : derivedHours;
 
     if (!existing) {
       newTasks.push({
@@ -120,7 +122,7 @@ async function computeDiff(request: Request, projectId: string) {
         name:        row.name,
         start:       toIso(row.startDate),
         end:         toIso(row.endDate),
-        hours:       Math.round(derivedHours * 100) / 100,
+        hours:       Math.round(importHours * 100) / 100,
         total_value: row.totalValue,
       });
       continue;
@@ -129,14 +131,9 @@ async function computeDiff(request: Request, projectId: string) {
     const nameDiff   = fieldDiff(existing.name, row.name);
     const startDiff  = fieldDiff(toIso(existing.startDate), toIso(row.startDate));
     const endDiff    = fieldDiff(toIso(existing.endDate), toIso(row.endDate));
-    const hoursDiff  = fieldDiff(
-      Math.round(existing.totalLabourHours * 100) / 100,
-      Math.round(derivedHours * 100) / 100
-    );
     const valueDiff  = fieldDiff(existing.totalValue, row.totalValue);
 
-    const anyChanged = nameDiff.changed || startDiff.changed || endDiff.changed ||
-                       hoursDiff.changed || valueDiff.changed;
+    const anyChanged = nameDiff.changed || startDiff.changed || endDiff.changed || valueDiff.changed;
 
     if (anyChanged) {
       updatedTasks.push({
@@ -144,7 +141,7 @@ async function computeDiff(request: Request, projectId: string) {
         name:        nameDiff,
         start:       startDiff,
         end:         endDiff,
-        hours:       hoursDiff,
+        hours:       fieldDiff(existing.totalLabourHours, existing.totalLabourHours),
         total_value: valueDiff,
       });
     } else {
@@ -177,7 +174,7 @@ async function computeDiff(request: Request, projectId: string) {
     new_tasks:            newTasks,
     updated_tasks:        updatedTasks,
     removed_tasks:        removedTasks,
-    unchanged_tasks:      unchangedTasks.slice(0, 10),
+    unchanged_tasks:      unchangedTasks,
     total_unchanged_count: totalUnchangedCount,
   };
 
@@ -261,7 +258,6 @@ async function applyImport(request: Request, projectId: string) {
         name:                  upd.name,
         startDate:             new Date(upd.start),
         endDate:               new Date(upd.end),
-        totalLabourHours:      upd.hours,
         totalValue:            upd.total_value,
         source:                "EXCEL_IMPORT",
         lastImportedAt:        importedAt,
@@ -352,13 +348,17 @@ function parseScheduleRows(fileName: string, buffer: ArrayBuffer): ParsedRow[] {
   if (!rows.length) return [];
 
   const headers    = Object.keys(rows[0]);
+  const normalizeHeader = (value: string) => value.toLowerCase().replace(/\s+/g, " ").trim();
+  const exact       = (...names: string[]) =>
+    headers.find(h => names.some(n => normalizeHeader(h) === normalizeHeader(n)));
   const find       = (...names: string[]) =>
-    headers.find(h => names.some(n => h.toLowerCase().includes(n)));
+    headers.find(h => names.some(n => normalizeHeader(h).includes(normalizeHeader(n))));
   const idHeader    = find("task id", "activity id", "id");
   const nameHeader  = find("task name", "activity name", "name");
   const startHeader = find("start");
   const endHeader   = find("end", "finish");
-  const valueHeader = find("total value", "value");
+  const hoursHeader = exact("total hours", "labour hours", "labor hours", "worker hours", "hours");
+  const valueHeader = exact("total value") || find("value");
 
   return rows.map((row, i) => {
     const get    = (key?: string) => key ? String(row[key] || "") : "";
@@ -369,7 +369,8 @@ function parseScheduleRows(fileName: string, buffer: ArrayBuffer): ParsedRow[] {
       name:       get(nameHeader) || get(idHeader) || `IMPORT-${i + 1}`,
       startDate:  start!,
       endDate:    end!,
-      totalValue: Number(get(valueHeader).replace(/[$,]/g, "") || 0),
+      totalHours: parseNumber(get(hoursHeader)),
+      totalValue: parseNumber(get(valueHeader)),
     };
   }).filter((r): r is ParsedRow => Boolean(r.startDate && r.endDate));
 }
@@ -395,6 +396,13 @@ function minDate(dates: Date[]) {
 
 function maxDate(dates: Date[]) {
   return new Date(Math.max(...dates.map(d => d.getTime())));
+}
+
+function parseNumber(value: string) {
+  const cleaned = value.replace(/[$,\s]/g, "");
+  if (!cleaned || cleaned === "-") return 0;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function scopedId(projectId: string, taskId: string) {
