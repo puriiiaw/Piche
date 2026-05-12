@@ -5,6 +5,89 @@ import * as XLSX from "xlsx";
 
 export const runtime = "nodejs";
 
+/** Normalise a column header: strip all whitespace/newlines, lowercase */
+function normKey(k: string) {
+  return k.replace(/[\s\r\n]+/g, "").toLowerCase();
+}
+
+/**
+ * Try to parse a date string in any of these formats and return YYYY-MM.
+ * Returns null if parsing fails.
+ */
+function parseMonth(raw: string): string | null {
+  const s = raw.trim();
+
+  // ISO: YYYY-MM-DD
+  const iso = s.match(/^(\d{4})-(\d{2})-\d{2}/);
+  if (iso) return `${iso[1]}-${iso[2]}`;
+
+  // DD/MM/YYYY or D/M/YYYY
+  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (dmy) {
+    const [, d, m, y] = dmy;
+    const date = new Date(Number(y), Number(m) - 1, Number(d));
+    if (!isNaN(date.getTime()))
+      return `${y}-${String(Number(m)).padStart(2, "0")}`;
+  }
+
+  // MM/DD/YYYY (US)
+  const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (mdy) {
+    // Try as MM/DD/YYYY — only use if DD > 12 (unambiguous)
+    const [, m, d, y] = mdy;
+    if (Number(d) > 12) {
+      const date = new Date(Number(y), Number(m) - 1, Number(d));
+      if (!isNaN(date.getTime()))
+        return `${y}-${String(Number(m)).padStart(2, "0")}`;
+    }
+  }
+
+  // DD-MM-YYYY or MM-DD-YYYY (with dashes)
+  const dashDmy = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
+  if (dashDmy) {
+    const [, a, b, y] = dashDmy;
+    // Treat as DD-MM-YYYY
+    const date = new Date(Number(y), Number(b) - 1, Number(a));
+    if (!isNaN(date.getTime()))
+      return `${y}-${String(Number(b)).padStart(2, "0")}`;
+  }
+
+  // Fallback: let JS parse it (handles "May 2 2026", "2026-05-02T00:00:00", etc.)
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  return null;
+}
+
+/** Pick the latest month string from an array (lexicographic on YYYY-MM is correct) */
+function latestMonth(months: string[]): string | null {
+  return months.reduce<string | null>((best, m) => (best === null || m > best ? m : best), null);
+}
+
+/** Auto-detect the hours column from a list of column names */
+function detectHoursCol(columns: string[]): string | null {
+  // Exact normalised matches first
+  return (
+    columns.find(k => normKey(k) === "totalhour") ??
+    columns.find(k => normKey(k) === "totalhours") ??
+    columns.find(k => /total.{0,4}hour/i.test(k)) ??
+    columns.find(k => /hour|hrs/i.test(k)) ??
+    null
+  );
+}
+
+/** Auto-detect the week-ending date column */
+function detectDateCol(columns: string[]): string | null {
+  return (
+    columns.find(k => normKey(k) === "weekendingdate") ??
+    columns.find(k => /week.{0,5}end/i.test(k.replace(/[\r\n]+/g, " "))) ??
+    columns.find(k => /date/i.test(k)) ??
+    null
+  );
+}
+
 export async function POST(
   request: Request,
   { params }: { params: { projectId: string } }
@@ -29,8 +112,8 @@ export async function POST(
   const url = new URL(request.url);
   const replace       = url.searchParams.get("replace") === "true";
   const preview       = url.searchParams.get("preview") === "true";
-  const hoursColParam = url.searchParams.get("hoursColumn");   // explicit column override
-  const dateColParam  = url.searchParams.get("dateColumn");    // explicit column override
+  const hoursColParam = url.searchParams.get("hoursColumn");
+  const dateColParam  = url.searchParams.get("dateColumn");
 
   // Parse multipart form
   let formData: FormData;
@@ -43,10 +126,8 @@ export async function POST(
   const file = formData.get("file") as File | null;
   if (!file) return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
 
-  // Read into buffer
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  // Parse workbook
   let workbook: XLSX.WorkBook;
   try {
     workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
@@ -66,39 +147,33 @@ export async function POST(
 
   const columns = Object.keys(rows[0]);
 
-  // ── PREVIEW MODE: just return column names ────────────────────────────────
+  // ── PREVIEW MODE ─────────────────────────────────────────────────────────
   if (preview) {
-    // Auto-detect best guesses to pre-select in the UI
-    const guessHours = columns.find(k => k.trim().toLowerCase() === "total hour")
-      ?? columns.find(k => /hour|hrs|hours/i.test(k))
-      ?? null;
-    const guessDate  = columns.find(k => k.trim().toLowerCase().replace(/\s+/g, " ") === "weekending date")
-      ?? columns.find(k => /week.?end|date/i.test(k))
-      ?? null;
-
-    return NextResponse.json({ columns, guessHours, guessDate });
+    return NextResponse.json({
+      columns,
+      guessHours: detectHoursCol(columns),
+      guessDate:  detectDateCol(columns),
+    });
   }
 
-  // ── PROCESS MODE ──────────────────────────────────────────────────────────
+  // ── PROCESS MODE ─────────────────────────────────────────────────────────
 
-  // Resolve hours column: explicit param > auto-detect > error
+  // Resolve hours column
   let totalHourKey: string | undefined;
   if (hoursColParam) {
     totalHourKey = columns.find(k => k === hoursColParam);
-    if (!totalHourKey) {
+    if (!totalHourKey)
       return NextResponse.json({ error: `Column '${hoursColParam}' not found in the file.` }, { status: 400 });
-    }
   } else {
-    totalHourKey = columns.find(k => k.trim().toLowerCase() === "total hour");
-    if (!totalHourKey) {
-      // Return the columns so the UI can prompt the user
-      const guessHours = columns.find(k => /hour|hrs|hours/i.test(k)) ?? null;
-      const guessDate  = columns.find(k => /week.?end|date/i.test(k)) ?? null;
+    const auto = detectHoursCol(columns);
+    if (!auto) {
+      // Ask user to pick
       return NextResponse.json(
-        { needsColumnSelection: true, columns, guessHours, guessDate },
+        { needsColumnSelection: true, columns, guessHours: null, guessDate: detectDateCol(columns) },
         { status: 422 }
       );
     }
+    totalHourKey = auto;
   }
 
   // Resolve date column
@@ -106,62 +181,58 @@ export async function POST(
   if (dateColParam) {
     weekEndingKey = columns.find(k => k === dateColParam) ?? undefined;
   } else {
-    weekEndingKey = columns.find(
-      k => k.trim().toLowerCase().replace(/\s+/g, " ") === "weekending date"
-    );
+    weekEndingKey = detectDateCol(columns) ?? undefined;
   }
 
-  // Sum Total Hour column and find latest WeekEnding Date
+  // Sum hours and collect parsed months
   let totalHours = 0;
-  let rowCount = 0;
-  let latestDateStr: string | null = null;
+  let rowCount   = 0;
+  const parsedMonths: string[] = [];
 
   for (const row of rows) {
+    // Hours
     const rawVal = row[totalHourKey];
     const num = typeof rawVal === "number"
       ? rawVal
-      : typeof rawVal === "string" ? parseFloat(rawVal) : NaN;
+      : typeof rawVal === "string" ? parseFloat(rawVal.replace(/,/g, "")) : NaN;
     if (!isNaN(num) && num > 0) {
       totalHours += num;
       rowCount++;
     }
 
+    // Date
     if (weekEndingKey) {
       const dateVal = row[weekEndingKey];
       if (dateVal) {
-        const s = String(dateVal);
-        if (!latestDateStr || s > latestDateStr) latestDateStr = s;
+        const m = parseMonth(String(dateVal));
+        if (m) parsedMonths.push(m);
       }
     }
   }
 
-  // Derive month from latest WeekEnding Date
-  let month: string;
-  if (latestDateStr) {
-    const isoMatch = latestDateStr.match(/^(\d{4})-(\d{2})-\d{2}/);
-    if (isoMatch) {
-      month = `${isoMatch[1]}-${isoMatch[2]}`;
-    } else {
-      const parsed = new Date(latestDateStr);
-      if (!isNaN(parsed.getTime())) {
-        month = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
-      } else {
-        return NextResponse.json(
-          { error: "Could not parse a date from the selected date column." },
-          { status: 400 }
-        );
-      }
+  // Determine month from the latest date found
+  let month: string | null = null;
+
+  if (parsedMonths.length > 0) {
+    month = latestMonth(parsedMonths);
+  }
+
+  if (!month) {
+    if (!weekEndingKey) {
+      return NextResponse.json(
+        { needsColumnSelection: true, columns, guessHours: totalHourKey, guessDate: null,
+          error: "Could not find a date column — please select one." },
+        { status: 422 }
+      );
     }
-  } else {
     return NextResponse.json(
-      { error: "No date column selected or it is empty — cannot determine the month." },
+      { error: "Could not parse any dates from the selected date column. Please make sure it contains dates (e.g. 25/04/2026 or 2026-04-25)." },
       { status: 400 }
     );
   }
 
   const db = getDb();
 
-  // Check for existing record
   const existing = await db.actualHours.findUnique({
     where: { projectId_month: { projectId: params.projectId, month } }
   });
@@ -179,7 +250,6 @@ export async function POST(
     );
   }
 
-  // Upsert record
   try {
     const record = await db.actualHours.upsert({
       where: { projectId_month: { projectId: params.projectId, month } },
