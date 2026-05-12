@@ -198,7 +198,7 @@ export function ImportWizard({ open, onOpenChange, project }: ImportWizardProps)
               />
               <FileSpreadsheet className="mb-3 text-piche-goldDark" size={36} />
               <strong className="text-xl text-piche-ink">Choose schedule file</strong>
-              <span className="mt-2 text-sm text-piche-muted">CSV, XLSX, or XLS — we'll show you what changed before applying anything.</span>
+              <span className="mt-2 text-sm text-piche-muted">CSV, XLSX, or XLS — we will show you what changed before applying anything.</span>
               {error && (
                 <span className="mt-4 rounded-app border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700">
                   {error}
@@ -224,7 +224,7 @@ export function ImportWizard({ open, onOpenChange, project }: ImportWizardProps)
               <CheckCircle2 size={44} className="text-emerald-500" />
               <p className="text-xl font-black text-piche-ink">No changes detected</p>
               <p className="text-sm text-piche-muted">
-                Every task in <strong>{diff?.fileName}</strong> matches what's already in the schedule.
+                Every task in <strong>{diff?.fileName}</strong> matches what is already in the schedule.
               </p>
               <button className="btn-primary mt-4" onClick={() => onOpenChange(false)}>OK</button>
             </div>
