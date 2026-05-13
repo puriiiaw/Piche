@@ -6,7 +6,7 @@ import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { CheckSquare, ChevronDown, ChevronUp, Download, Edit, FileUp, Plus, Square, Trash2, Upload, X } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, ComposedChart, Legend, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { projectAreas } from "@/lib/constants";
 import { visibleProjectsForState } from "@/lib/access";
 import { formatDate } from "@/lib/dates";
@@ -103,7 +103,7 @@ export function ProjectsView() {
                   className={`cursor-pointer border-t border-piche-line hover:bg-slate-50 ${activeProject?.id === project.id ? "bg-piche-gold/10" : ""}`}
                   onClick={() => state.setProject(project.id)}
                 >
-                  <td className="p-3"><strong className="text-piche-ink">{project.name}</strong><span className="block text-sm font-medium text-piche-muted">{project.tasks.length} tasks</span></td>
+                  <td className="p-3"><strong className="text-piche-ink">{project.name}</strong><span className="block text-sm font-medium text-piche-muted">{project.tasks.filter((task) => !task.isDeleted).length} tasks</span></td>
                   <td className="p-3">{state.managers.find((manager) => manager.id === project.managerId)?.name}</td>
                   <td className="p-3">{project.area}<span className="block text-sm text-piche-muted">{project.cityName}</span></td>
                   <td className="p-3">{formatDate(project.startDate)} - {formatDate(project.endDate)}</td>
@@ -167,9 +167,22 @@ function applyTaskFilter(tasks: Task[], filter: TaskFilter): Task[] {
 function ProjectDetail({ project }: { project: Project }) {
   const state = useAppStore();
   const updateProject = useAppStore((entry) => entry.updateProject);
-  const labourHours = useMemo(() => projectTotalHours(project), [project]);
+  const availableTasks = useMemo(() => project.tasks.filter((task) => !task.isDeleted), [project.tasks]);
+  const activeTasks = useMemo(() => availableTasks.filter((task) => !task.isCompleted), [availableTasks]);
+  const archiveCount = availableTasks.filter((task) => task.isCompleted).length + project.tasks.filter((task) => task.isDeleted).length;
+  const labourHours = useMemo(() => projectTotalHours({ ...project, tasks: availableTasks }), [project, availableTasks]);
   const [taskFilter, setTaskFilter] = useState<TaskFilter>({ search: "", startDate: "", endDate: "" });
-  const filteredTasks = useMemo(() => applyTaskFilter(project.tasks, taskFilter), [project.tasks, taskFilter]);
+  const filteredActiveTasks = useMemo(() => applyTaskFilter(activeTasks, taskFilter), [activeTasks, taskFilter]);
+  const filteredAllTasks = useMemo(() => applyTaskFilter(project.tasks, taskFilter), [project.tasks, taskFilter]);
+  const [restoredIds, setRestoredIds] = useState<Set<string>>(new Set());
+  const [restoreToast, setRestoreToast] = useState<{ id: string; startedAt: number } | null>(null);
+
+  const flashRestoredTask = useCallback((taskId: string) => {
+    setRestoredIds((prev) => new Set([...prev, taskId]));
+    setRestoreToast({ id: taskId, startedAt: Date.now() });
+    setTimeout(() => setRestoredIds((prev) => { const next = new Set(prev); next.delete(taskId); return next; }), 300);
+    setTimeout(() => setRestoreToast(null), 5000);
+  }, []);
 
   // Lift curve data so stat cards can show real values
   const range = useMemo(() => dashboardRange("full"), []);
@@ -206,10 +219,7 @@ function ProjectDetail({ project }: { project: Project }) {
           <h2 className="text-3xl font-black text-piche-ink">{project.name}</h2>
           <p className="mt-1 text-piche-muted">{formatDate(project.startDate)} to {formatDate(project.endDate)} - {project.area}, {project.cityName}</p>
         </div>
-        <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
-          <label className="field rounded-app border border-piche-line bg-slate-50 p-3">Hours / Worker<input type="number" value={project.dailyHoursPerWorker} onChange={(event) => updateProject(project.id, { dailyHoursPerWorker: Number(event.target.value) })} onBlur={(event) => fetch(`/api/projects/${project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dailyHoursPerWorker: Number(event.target.value) }) })} /></label>
-          <label className="field rounded-app border border-piche-line bg-slate-50 p-3">Max Workers<input type="number" value={project.maxAvailableWorkers} onChange={(event) => updateProject(project.id, { maxAvailableWorkers: Number(event.target.value) })} onBlur={(event) => fetch(`/api/projects/${project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ maxAvailableWorkers: Number(event.target.value) }) })} /></label>
-        </div>
+        <ProjectPlanningFields project={project} updateProject={updateProject} />
       </div>
 
       <div className="grid grid-cols-4 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-2">
@@ -239,9 +249,9 @@ function ProjectDetail({ project }: { project: Project }) {
           onClick={() => state.setProjectTab("archive")}
         >
           Archive
-          {project.tasks.filter((t) => t.isCompleted).length > 0 && (
+          {archiveCount > 0 && (
             <span className={`ml-2 rounded-full px-1.5 py-0.5 text-xs font-black ${state.activeProjectTab === "archive" ? "bg-white/20 text-white" : "bg-piche-gold/20 text-piche-goldDark"}`}>
-              {project.tasks.filter((t) => t.isCompleted).length}
+              {archiveCount}
             </span>
           )}
         </button>
@@ -264,17 +274,124 @@ function ProjectDetail({ project }: { project: Project }) {
           {(taskFilter.search || taskFilter.startDate || taskFilter.endDate) && (
             <button className="btn-secondary self-end" onClick={() => setTaskFilter({ search: "", startDate: "", endDate: "" })}>Clear</button>
           )}
-          <span className="self-end pb-2 text-sm font-semibold text-piche-muted">{filteredTasks.length} of {project.tasks.length} tasks</span>
+          <span className="self-end pb-2 text-sm font-semibold text-piche-muted">{filteredActiveTasks.length} of {activeTasks.length} active tasks</span>
         </div>
       )}
 
       {state.activeProjectTab === "overview" && <OverviewTab project={project} curve={curve} actualsData={actualsData} onUploadSuccess={refreshActuals} />}
-      {state.activeProjectTab === "tasks" && <TasksTab project={project} tasks={filteredTasks} />}
-      {state.activeProjectTab === "schedule" && <ScheduleTab project={project} tasks={filteredTasks} />}
-      {state.activeProjectTab === "crew" && <CrewTab project={project} tasks={filteredTasks} />}
+      {state.activeProjectTab === "tasks" && <TasksTab project={project} tasks={filteredAllTasks} restoredIds={restoredIds} />}
+      {state.activeProjectTab === "schedule" && <ScheduleTab project={project} tasks={filteredActiveTasks} />}
+      {state.activeProjectTab === "crew" && <CrewTab project={project} tasks={filteredActiveTasks} />}
       {state.activeProjectTab === "imports" && <ImportsTab project={project} actualsData={actualsData} onUploadSuccess={refreshActuals} />}
-      {state.activeProjectTab === "archive" && <ArchiveTab project={project} />}
+      {state.activeProjectTab === "archive" && <ArchiveTab project={project} onRestored={flashRestoredTask} />}
+      {restoreToast ? <TaskToast text="Task restored" startedAt={restoreToast.startedAt} /> : null}
     </section>
+  );
+}
+
+function ProjectPlanningFields({
+  project,
+  updateProject
+}: {
+  project: Project;
+  updateProject: (projectId: string, patch: Partial<Project>) => void;
+}) {
+  const [draft, setDraft] = useState({
+    dailyHoursPerWorker: String(project.dailyHoursPerWorker),
+    avgHourlyRate: String(project.avgHourlyRate),
+    maxAvailableWorkers: String(project.maxAvailableWorkers)
+  });
+  const [pending, setPending] = useState<null | "dailyHoursPerWorker" | "maxAvailableWorkers">(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setDraft({
+      dailyHoursPerWorker: String(project.dailyHoursPerWorker),
+      avgHourlyRate: String(project.avgHourlyRate),
+      maxAvailableWorkers: String(project.maxAvailableWorkers)
+    });
+  }, [project.dailyHoursPerWorker, project.avgHourlyRate, project.maxAvailableWorkers]);
+
+  const cancelPending = useCallback(() => {
+    setDraft((current) => ({
+      ...current,
+      dailyHoursPerWorker: String(project.dailyHoursPerWorker),
+      maxAvailableWorkers: String(project.maxAvailableWorkers)
+    }));
+    setPending(null);
+  }, [project.dailyHoursPerWorker, project.maxAvailableWorkers]);
+
+  useEffect(() => {
+    if (!pending) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) cancelPending();
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [cancelPending, pending]);
+
+  const savePatch = async (patch: Partial<Project>) => {
+    updateProject(project.id, patch);
+    await fetch(`/api/projects/${project.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch)
+    });
+  };
+
+  const confirmPending = async () => {
+    if (!pending) return;
+    const value = Number(draft[pending] || 0);
+    await savePatch({ [pending]: value } as Partial<Project>);
+    const updatedField = pending;
+    setPending(null);
+    toast.success(updatedField === "dailyHoursPerWorker"
+      ? "Hours per worker updated — crew estimates recalculated"
+      : "Max workers updated — crew estimates recalculated");
+  };
+
+  const handleBlur = (field: "dailyHoursPerWorker" | "maxAvailableWorkers") => {
+    const value = Number(draft[field] || 0);
+    if (value !== Number(project[field])) setPending(field);
+  };
+
+  return (
+    <div ref={ref} className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
+      <label className="field rounded-app border border-piche-line bg-slate-50 p-3">
+        Hours / Worker
+        <input type="number" value={draft.dailyHoursPerWorker} onChange={(event) => setDraft((d) => ({ ...d, dailyHoursPerWorker: event.target.value }))} onBlur={() => handleBlur("dailyHoursPerWorker")} />
+        {pending === "dailyHoursPerWorker" ? <ConfirmBar onConfirm={confirmPending} onCancel={cancelPending} /> : null}
+      </label>
+      <label className="field rounded-app border border-piche-line bg-slate-50 p-3">
+        Avg Rate
+        <input
+          type="number"
+          value={draft.avgHourlyRate}
+          onChange={(event) => setDraft((d) => ({ ...d, avgHourlyRate: event.target.value }))}
+          onBlur={(event) => {
+            const value = Number(event.target.value || 0);
+            if (value !== project.avgHourlyRate) savePatch({ avgHourlyRate: value });
+          }}
+        />
+      </label>
+      <label className="field rounded-app border border-piche-line bg-slate-50 p-3">
+        Max Workers
+        <input type="number" value={draft.maxAvailableWorkers} onChange={(event) => setDraft((d) => ({ ...d, maxAvailableWorkers: event.target.value }))} onBlur={() => handleBlur("maxAvailableWorkers")} />
+        {pending === "maxAvailableWorkers" ? <ConfirmBar onConfirm={confirmPending} onCancel={cancelPending} /> : null}
+      </label>
+    </div>
+  );
+}
+
+function ConfirmBar({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="mt-2 rounded-app border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">
+      <p>Changing this will recalculate all crew estimates.</p>
+      <div className="mt-2 flex gap-2">
+        <button type="button" className="rounded-md bg-piche-navy px-3 py-1 text-white" onMouseDown={(e) => e.preventDefault()} onClick={onConfirm}>Confirm</button>
+        <button type="button" className="rounded-md border border-piche-line bg-white px-3 py-1 text-piche-ink" onMouseDown={(e) => e.preventDefault()} onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
   );
 }
 
@@ -286,6 +403,26 @@ function OverviewTab({ project, curve, actualsData, onUploadSuccess }: {
 }) {
   const missing = project.tasks.filter((task) => task.labourHoursMissing).length;
   const analysis = curve.data?.analysis;
+  const overCapacityRanges = useMemo(() => {
+    const rows = curve.data?.chartData || [];
+    const ranges: { x1: string; x2: string }[] = [];
+    let start: string | null = null;
+    let end: string | null = null;
+    rows.forEach((row) => {
+      const period = String(row.period);
+      const demand = Number(row["Total Demand"] || 0);
+      if (demand > project.maxAvailableWorkers) {
+        start ??= period;
+        end = period;
+        return;
+      }
+      if (start && end) ranges.push({ x1: start, x2: end });
+      start = null;
+      end = null;
+    });
+    if (start && end) ranges.push({ x1: start, x2: end });
+    return ranges;
+  }, [curve.data?.chartData, project.maxAvailableWorkers]);
 
   return (
     <div className="grid gap-6">
@@ -309,8 +446,17 @@ function OverviewTab({ project, curve, actualsData, onUploadSuccess }: {
                 <XAxis dataKey="period" tick={{ fontSize: 12 }} />
                 <YAxis />
                 <Tooltip />
+                {overCapacityRanges.map((range) => (
+                  <ReferenceArea key={`${range.x1}-${range.x2}`} x1={range.x1} x2={range.x2} y1={project.maxAvailableWorkers} fill="#fecaca" fillOpacity={0.45} ifOverflow="visible" />
+                ))}
                 <Area dataKey="Total Demand" stroke="#c7b157" fill="#c7b157" fillOpacity={0.35} isAnimationActive={false} />
-                <Line dataKey="Capacity" stroke="#dc2626" strokeDasharray="6 6" isAnimationActive={false} dot={false} />
+                <ReferenceLine
+                  y={project.maxAvailableWorkers}
+                  stroke="#dc2626"
+                  strokeDasharray="6 6"
+                  strokeWidth={2}
+                  label={(props) => <ProjectMaxLabel {...props} value={project.maxAvailableWorkers} />}
+                />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -329,6 +475,17 @@ function OverviewTab({ project, curve, actualsData, onUploadSuccess }: {
     </div>
     <PlannedVsActualSection project={project} actualsData={actualsData} onUploadSuccess={onUploadSuccess} />
     </div>
+  );
+}
+
+function ProjectMaxLabel(props: { viewBox?: { x?: number; y?: number; width?: number }; value: number }) {
+  const x = Number(props.viewBox?.x || 0) + Number(props.viewBox?.width || 0) - 6;
+  const y = Number(props.viewBox?.y || 0) - 8;
+  return (
+    <text x={x} y={y} textAnchor="end" fill="#dc2626" fontSize={12} fontWeight={800}>
+      <title>Project maximum workers — set in project settings</title>
+      {`Project Max: ${props.value}`}
+    </text>
   );
 }
 
@@ -382,8 +539,9 @@ function useLabourCurve(url: string): LabourCurveHook {
 const pageSizeOptions = [50, 100, 200] as const;
 
 type CompletionUndo = { taskId: string; taskName: string; startedAt: number };
+type DeleteUndo = { task: Task; startedAt: number };
 
-function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
+function TasksTab({ project, tasks, restoredIds }: { project: Project; tasks: Task[]; restoredIds: Set<string> }) {
   const state = useAppStore();
   const [taskDialog, setTaskDialog] = useState<Task | null | "new">(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -395,18 +553,25 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
   // Completion undo state
   const [completionUndo, setCompletionUndo] = useState<CompletionUndo | null>(null);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set()); // visible during undo window
+  const [pendingDeletedIds, setPendingDeletedIds] = useState<Set<string>>(new Set());
   const [fadingIds, setFadingIds] = useState<Set<string>>(new Set());   // CSS fade-out
+  const [deleteUndo, setDeleteUndo] = useState<DeleteUndo | null>(null);
   const [parentConfirm, setParentConfirm] = useState<Task | null>(null); // parent task confirm dialog
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset to page 1 when tasks (filter) changes
   useEffect(() => { setCurrentPage(1); }, [tasks]);
 
-  const totalPages = Math.max(1, Math.ceil(tasks.length / pageSize));
+  const activeTasks = tasks.filter((t) =>
+    (!t.isCompleted || pendingIds.has(t.id)) &&
+    (!t.isDeleted || pendingDeletedIds.has(t.id))
+  );
+  const totalPages = Math.max(1, Math.ceil(activeTasks.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
-  const pageTasks = tasks.slice((safePage - 1) * pageSize, safePage * pageSize);
-  const isLargeProject = tasks.length > largeTaskThreshold;
-  const missingTasks = tasks.filter((t) => t.labourHoursMissing);
+  const pageTasks = activeTasks.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const isLargeProject = activeTasks.length > largeTaskThreshold;
+  const missingTasks = activeTasks.filter((t) => t.labourHoursMissing);
 
   const toggleSelect = (id: string) => setSelectedIds((prev) => {
     const next = new Set(prev);
@@ -453,8 +618,6 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
   };
 
   // ── Task completion ─────────────────────────────────────────────────────────
-  const activeTasks = tasks.filter((t) => !t.isCompleted || pendingIds.has(t.id));
-
   const startCompletionTimer = (taskId: string, taskName: string) => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     setCompletionUndo({ taskId, taskName, startedAt: Date.now() });
@@ -471,7 +634,7 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
 
   const handleComplete = async (task: Task) => {
     // Parent task: check for sub-tasks
-    const subTasks = tasks.filter((t) => !t.isCompleted && t.id !== task.id && (t.id.startsWith(task.id + ".") || t.id.startsWith(task.id + "-")));
+    const subTasks = tasks.filter((t) => !t.isCompleted && !t.isDeleted && t.id !== task.id && (t.id.startsWith(task.id + ".") || t.id.startsWith(task.id + "-")));
     const isParentTask = task.totalLabourHours === 0 && !task.labourHoursMissing;
     if (isParentTask && subTasks.length > 0) {
       setParentConfirm(task);
@@ -502,6 +665,45 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
     state.restoreTask(project.id, taskId);
   };
 
+  const handleDeleteTask = async (task: Task) => {
+    const res = await fetch(`/api/projects/${project.id}/tasks/${task.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      toast.error(body.error || "Could not delete task. Please try again.");
+      return;
+    }
+    const body = await res.json().catch(() => ({}));
+    state.softDeleteTask(
+      project.id,
+      task.id,
+      body.deletedAt || new Date().toISOString(),
+      body.deletedByName || body.deletedBy || "",
+      body.permanentDeleteAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    );
+    setPendingDeletedIds((prev) => new Set([...prev, task.id]));
+    setDeleteUndo({ task, startedAt: Date.now() });
+    if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+    deleteTimerRef.current = setTimeout(() => {
+      setFadingIds((prev) => new Set([...prev, task.id]));
+      setTimeout(() => {
+        setPendingDeletedIds((prev) => { const next = new Set(prev); next.delete(task.id); return next; });
+        setFadingIds((prev) => { const next = new Set(prev); next.delete(task.id); return next; });
+        setDeleteUndo(null);
+      }, 300);
+    }, 5000);
+  };
+
+  const handleUndoDelete = async () => {
+    if (!deleteUndo) return;
+    if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+    const task = deleteUndo.task;
+    setDeleteUndo(null);
+    setPendingDeletedIds((prev) => { const next = new Set(prev); next.delete(task.id); return next; });
+    setFadingIds((prev) => { const next = new Set(prev); next.delete(task.id); return next; });
+    await fetch(`/api/projects/${project.id}/tasks/${task.id}/restore`, { method: "PATCH" });
+    state.restoreTask(project.id, task.id);
+  };
+
   // Paginate over active (non-completed) tasks
   const activePageTasks = activeTasks.slice((safePage - 1) * pageSize, safePage * pageSize);
 
@@ -521,15 +723,15 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
       {isLargeProject && !selectedIds.size ? (
         <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={activePageTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-            <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable={false} selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={isLargeProject} onComplete={handleComplete} fadingIds={fadingIds} />
+            <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable={false} selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={isLargeProject} onComplete={handleComplete} onDelete={handleDeleteTask} fadingIds={fadingIds} restoredIds={restoredIds} />
           </SortableContext>
         </DndContext>
       ) : isLargeProject ? (
-        <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable={false} selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={isLargeProject} onComplete={handleComplete} fadingIds={fadingIds} />
+        <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable={false} selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={isLargeProject} onComplete={handleComplete} onDelete={handleDeleteTask} fadingIds={fadingIds} restoredIds={restoredIds} />
       ) : (
         <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={activePageTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-            <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={false} onComplete={handleComplete} fadingIds={fadingIds} />
+            <TaskTable tasks={activePageTasks} project={project} onEdit={setTaskDialog} sortable selectedIds={selectedIds} onToggle={toggleSelect} onToggleAll={toggleAll} allSelected={allPageSelected} isLargeProject={false} onComplete={handleComplete} onDelete={handleDeleteTask} fadingIds={fadingIds} restoredIds={restoredIds} />
           </SortableContext>
         </DndContext>
       )}
@@ -629,13 +831,15 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
       )}
 
       {/* ── Parent task confirm dialog ── */}
+      {deleteUndo ? <TaskToast text="Task removed" detail={deleteUndo.task.name} startedAt={deleteUndo.startedAt} onUndo={handleUndoDelete} /> : null}
+
       {parentConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="card w-full max-w-sm p-6">
             <h2 className="text-xl font-black text-piche-ink">Archive sub-tasks too?</h2>
             <p className="mt-2 text-piche-muted">
               This will also archive{" "}
-              <strong>{tasks.filter((t) => !t.isCompleted && t.id !== parentConfirm.id && (t.id.startsWith(parentConfirm.id + ".") || t.id.startsWith(parentConfirm.id + "-"))).length} sub-task(s)</strong>.
+              <strong>{tasks.filter((t) => !t.isCompleted && !t.isDeleted && t.id !== parentConfirm.id && (t.id.startsWith(parentConfirm.id + ".") || t.id.startsWith(parentConfirm.id + "-"))).length} sub-task(s)</strong>.
               Continue?
             </p>
             <div className="mt-6 flex justify-end gap-3">
@@ -644,7 +848,7 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
                 className="btn-primary"
                 onClick={async () => {
                   const subIds = tasks
-                    .filter((t) => !t.isCompleted && t.id !== parentConfirm.id && (t.id.startsWith(parentConfirm.id + ".") || t.id.startsWith(parentConfirm.id + "-")))
+                    .filter((t) => !t.isCompleted && !t.isDeleted && t.id !== parentConfirm.id && (t.id.startsWith(parentConfirm.id + ".") || t.id.startsWith(parentConfirm.id + "-")))
                     .map((t) => t.id);
                   setParentConfirm(null);
                   await doComplete(parentConfirm.id, parentConfirm.name, subIds);
@@ -698,6 +902,35 @@ function TasksTab({ project, tasks }: { project: Project; tasks: Task[] }) {
   );
 }
 
+function TaskToast({
+  text,
+  detail,
+  startedAt,
+  onUndo
+}: {
+  text: string;
+  detail?: string;
+  startedAt: number;
+  onUndo?: () => void;
+}) {
+  return (
+    <div className="fixed bottom-6 right-6 z-50 w-72 overflow-hidden rounded-app bg-piche-navy text-white shadow-2xl">
+      <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-3">
+        <span className="text-sm font-semibold">✓ {text}</span>
+        {onUndo ? (
+          <button className="rounded-md border border-white/20 px-3 py-1 text-xs font-black" onClick={onUndo}>
+            Undo
+          </button>
+        ) : null}
+      </div>
+      {detail ? <p className="truncate px-4 pb-2 text-xs text-white/60">{detail}</p> : <div className="pb-2" />}
+      <div className="h-1 w-full bg-white/10">
+        <div key={startedAt} className="h-full bg-piche-gold" style={{ animation: "countdown-bar 5s linear forwards" }} />
+      </div>
+    </div>
+  );
+}
+
 function TaskTable({
   tasks,
   project,
@@ -708,7 +941,9 @@ function TaskTable({
   onToggleAll,
   allSelected,
   onComplete,
-  fadingIds
+  onDelete,
+  fadingIds,
+  restoredIds
 }: {
   tasks: Task[];
   project: Project;
@@ -720,7 +955,9 @@ function TaskTable({
   allSelected?: boolean;
   isLargeProject?: boolean;
   onComplete?: (task: Task) => void;
+  onDelete?: (task: Task) => void;
   fadingIds?: Set<string>;
+  restoredIds?: Set<string>;
 }) {
   return (
     <div className="overflow-auto rounded-app border border-piche-line">
@@ -748,8 +985,8 @@ function TaskTable({
         </thead>
         <tbody>
           {tasks.map((task) => sortable
-            ? <SortableTaskRow key={task.id} task={task} project={project} onEdit={() => onEdit(task)} selected={selectedIds?.has(task.id)} onToggle={onToggle ? () => onToggle(task.id) : undefined} onComplete={onComplete ? () => onComplete(task) : undefined} fading={fadingIds?.has(task.id)} />
-            : <TaskRow key={task.id} task={task} project={project} onEdit={() => onEdit(task)} selected={selectedIds?.has(task.id)} onToggle={onToggle ? () => onToggle(task.id) : undefined} onComplete={onComplete ? () => onComplete(task) : undefined} fading={fadingIds?.has(task.id)} />
+            ? <SortableTaskRow key={task.id} task={task} project={project} onEdit={() => onEdit(task)} selected={selectedIds?.has(task.id)} onToggle={onToggle ? () => onToggle(task.id) : undefined} onComplete={onComplete ? () => onComplete(task) : undefined} onDelete={onDelete ? () => onDelete(task) : undefined} fading={fadingIds?.has(task.id)} restored={restoredIds?.has(task.id)} />
+            : <TaskRow key={task.id} task={task} project={project} onEdit={() => onEdit(task)} selected={selectedIds?.has(task.id)} onToggle={onToggle ? () => onToggle(task.id) : undefined} onComplete={onComplete ? () => onComplete(task) : undefined} onDelete={onDelete ? () => onDelete(task) : undefined} fading={fadingIds?.has(task.id)} restored={restoredIds?.has(task.id)} />
           )}
         </tbody>
       </table>
@@ -757,7 +994,7 @@ function TaskTable({
   );
 }
 
-function SortableTaskRow(props: { task: Task; project: Project; onEdit: () => void; selected?: boolean; onToggle?: () => void; dragDisabled?: boolean; onComplete?: () => void; fading?: boolean }) {
+function SortableTaskRow(props: { task: Task; project: Project; onEdit: () => void; selected?: boolean; onToggle?: () => void; dragDisabled?: boolean; onComplete?: () => void; onDelete?: () => void; fading?: boolean; restored?: boolean }) {
   const sortable = useSortable({ id: props.task.id });
   const style = {
     transform: CSS.Transform.toString(sortable.transform),
@@ -776,7 +1013,9 @@ function TaskRow({
   selected,
   onToggle,
   onComplete,
-  fading
+  onDelete,
+  fading,
+  restored
 }: {
   task: Task;
   project: Project;
@@ -787,11 +1026,12 @@ function TaskRow({
   selected?: boolean;
   onToggle?: () => void;
   onComplete?: () => void;
+  onDelete?: () => void;
   fading?: boolean;
+  restored?: boolean;
 }) {
-  const state = useAppStore();
   return (
-    <tr ref={rowRef} style={style} className={`border-t border-piche-line transition-opacity duration-300 ${fading ? "opacity-0" : "opacity-100"} ${selected ? "bg-piche-gold/10" : "bg-white"}`}>
+    <tr ref={rowRef} style={style} className={`border-t border-piche-line transition-opacity duration-300 ${fading ? "opacity-0" : restored ? "animate-[fade-in_300ms_ease-out_forwards] opacity-0" : "opacity-100"} ${selected ? "bg-piche-gold/10" : "bg-white"}`}>
       {/* Completion checkbox — only rendered when onComplete is provided (PM role) */}
       {onComplete !== undefined && (
         <td className="p-3">
@@ -834,15 +1074,7 @@ function TaskRow({
       <td className="p-3">
         <div className="flex justify-end gap-2">
           <button className="grid h-9 w-9 place-items-center rounded-app border border-piche-line" onClick={onEdit}><Edit size={16} /></button>
-          <button className="grid h-9 w-9 place-items-center rounded-app border border-piche-line text-red-700" onClick={async () => {
-            const res = await fetch(`/api/projects/${project.id}/tasks/${task.id}`, { method: "DELETE" });
-            if (res.ok) {
-              state.deleteTask(project.id, task.id);
-            } else {
-              const body = await res.json().catch(() => ({}));
-              toast.error(body.error || "Could not delete task. Please try again.");
-            }
-          }}><Trash2 size={16} /></button>
+          <button className="grid h-9 w-9 place-items-center rounded-app border border-piche-line text-red-700" onClick={onDelete}><Trash2 size={16} /></button>
         </div>
       </td>
     </tr>
@@ -885,7 +1117,7 @@ function ScheduleTab({ project, tasks }: { project: Project; tasks: Task[] }) {
   const [visibleCount, setVisibleCount] = useState(initialTaskRows);
   const periods = useMemo(() => ganttPeriods(project, state.scheduleGranularity), [project, state.scheduleGranularity]);
   const visibleTasks = tasks.slice(0, visibleCount);
-  const activeTask = project.tasks.find((task) => task.id === state.selectedScheduleTaskId) || project.tasks[0];
+  const activeTask = tasks.find((task) => task.id === state.selectedScheduleTaskId) || tasks[0];
 
   // Export state
   const [exportOpen, setExportOpen] = useState(false);
@@ -1204,15 +1436,26 @@ function ImportsTab({ project, actualsData, onUploadSuccess }: { project: Projec
   );
 }
 
-function ArchiveTab({ project }: { project: Project }) {
+function daysUntil(date?: string): number {
+  if (!date) return 0;
+  const diff = new Date(date).getTime() - Date.now();
+  return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
+}
+
+function ArchiveTab({ project, onRestored }: { project: Project; onRestored: (taskId: string) => void }) {
   const state = useAppStore();
-  const completedTasks = project.tasks.filter((t) => t.isCompleted);
+  const completedTasks = project.tasks
+    .filter((t) => t.isCompleted && !t.isDeleted)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.sortOrder - b.sortOrder);
+  const deletedTasks = project.tasks
+    .filter((t) => t.isDeleted)
+    .sort((a, b) => (b.deletedAt || "").localeCompare(a.deletedAt || ""));
 
   const handleRestore = async (task: Task) => {
     const res = await fetch(`/api/projects/${project.id}/tasks/${task.id}/restore`, { method: "PATCH" });
     if (res.ok) {
       state.restoreTask(project.id, task.id);
-      toast.success(`${task.name} restored to active tasks.`);
+      onRestored(task.id);
     } else {
       toast.error("Could not restore task.");
     }
@@ -1224,11 +1467,12 @@ function ArchiveTab({ project }: { project: Project }) {
         <h3 className="text-xl font-black">Archived Tasks</h3>
         <p className="text-sm text-piche-muted">{completedTasks.length} completed task(s). Click Restore to move back to the active Tasks tab.</p>
       </div>
-      {completedTasks.length === 0 ? (
+      {completedTasks.length === 0 && deletedTasks.length === 0 ? (
         <div className="rounded-app border border-piche-line bg-slate-50 p-8 text-center text-piche-muted">
           No archived tasks yet. Mark tasks as complete from the Tasks tab.
         </div>
-      ) : (
+      ) : null}
+      {completedTasks.length > 0 ? (
         <div className="overflow-auto rounded-app border border-piche-line">
           <table className="w-full min-w-[900px] text-left">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500">
@@ -1270,7 +1514,62 @@ function ArchiveTab({ project }: { project: Project }) {
             </tbody>
           </table>
         </div>
-      )}
+      ) : null}
+      {deletedTasks.length > 0 ? (
+        <div className="grid gap-3">
+          <div>
+            <h3 className="text-lg font-black text-piche-ink">Recently deleted ({deletedTasks.length})</h3>
+            <p className="text-sm text-piche-muted">Deleted tasks are kept for 30 days before permanent cleanup.</p>
+          </div>
+          <div className="overflow-auto rounded-app border border-piche-line">
+            <table className="w-full min-w-[1000px] text-left">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="p-3">Task ID</th>
+                  <th className="p-3">Name</th>
+                  <th className="p-3">Start</th>
+                  <th className="p-3">End</th>
+                  <th className="p-3">Hours</th>
+                  <th className="p-3">Deleted</th>
+                  <th className="p-3">Deleted By</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {deletedTasks.map((task) => (
+                  <tr key={task.id} className="border-t border-piche-line bg-red-50/30">
+                    <td className="p-3 font-black text-slate-500">{task.id}</td>
+                    <td className="p-3 font-bold text-slate-600">{task.name}</td>
+                    <td className="p-3 text-slate-500">{formatDate(task.startDate)}</td>
+                    <td className="p-3 text-slate-500">{formatDate(task.endDate)}</td>
+                    <td className="p-3 text-slate-500">{formatNumber(task.totalLabourHours, 2)}</td>
+                    <td className="p-3 text-slate-500">
+                      {task.deletedAt
+                        ? new Date(task.deletedAt).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })
+                        : "-"}
+                    </td>
+                    <td className="p-3 text-slate-500">{task.deletedByName || task.deletedBy || "-"}</td>
+                    <td className="p-3">
+                      <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-black text-red-700">
+                        Deleted in {daysUntil(task.permanentDeleteAt)} days
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <button
+                        className="rounded-app border border-piche-line bg-white px-3 py-1.5 text-sm font-black text-piche-ink hover:bg-slate-50"
+                        onClick={() => handleRestore(task)}
+                      >
+                        Restore
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

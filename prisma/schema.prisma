@@ -50,6 +50,8 @@ model User {
   accounts           Account[]
   sessions           Session[]
   auditEvents        AuditEvent[]
+  deletedTasks       Task[]       @relation("DeletedTasks")
+  companySettings    CompanySetting[]
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 }
@@ -161,11 +163,17 @@ model Task {
   isCompleted           Boolean            @default(false)
   completedAt           DateTime?
   completedBy           String?
+  isDeleted             Boolean            @default(false)
+  deletedAt             DateTime?
+  deletedBy             String?
+  deletedByUser         User?              @relation("DeletedTasks", fields: [deletedBy], references: [id], onDelete: SetNull)
+  permanentDeleteAt     DateTime?
   allocations           CrewAllocation[]
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
 
   @@index([projectId, sortOrder])
+  @@index([isDeleted, permanentDeleteAt])
 }
 
 model CrewAllocation {
@@ -205,4 +213,15 @@ model AuditEvent {
   before    Json?
   after     Json?
   createdAt DateTime @default(now())
+}
+
+model CompanySetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
+  user      User?    @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("company_settings")
 }

@@ -38,7 +38,7 @@ export async function POST(request: Request, { params }: { params: { projectId: 
             .map(([crewTypeId, units]) => ({ crewTypeId, units: Number(units) }))
         }
       },
-      include: { allocations: true }
+      include: { allocations: true, deletedByUser: true }
     });
 
     return NextResponse.json({
@@ -58,6 +58,14 @@ export async function POST(request: Request, { params }: { params: { projectId: 
         assumptions: task.assumptions,
         documentLink: task.documentLink,
         sortOrder: task.sortOrder,
+        isCompleted: task.isCompleted,
+        completedAt: task.completedAt?.toISOString() ?? "",
+        completedBy: task.completedBy ?? "",
+        isDeleted: task.isDeleted,
+        deletedAt: task.deletedAt?.toISOString() ?? "",
+        deletedBy: task.deletedBy ?? "",
+        deletedByName: task.deletedByUser?.name ?? "",
+        permanentDeleteAt: task.permanentDeleteAt?.toISOString() ?? "",
         lastImportedAt: "",
         scheduleImportBatchId: ""
       }

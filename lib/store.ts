@@ -26,6 +26,7 @@ type AppStore = AppState & {
   createTask: (projectId: string, task: Partial<Task> & Pick<Task, "id" | "name" | "startDate" | "endDate">) => void;
   updateTask: (projectId: string, taskId: string, patch: Partial<Task>) => void;
   deleteTask: (projectId: string, taskId: string) => void;
+  softDeleteTask: (projectId: string, taskId: string, deletedAt: string, deletedBy: string, permanentDeleteAt: string) => void;
   reorderTask: (projectId: string, activeId: string, overId: string) => void;
   copyAllocationFromAbove: (projectId: string, taskId: string) => void;
   addCrewType: (label: string) => void;
@@ -126,6 +127,18 @@ export const useAppStore = create<AppStore>()(
           undo: { type: "task", projectId, item, message: `Deleted ${item.name}` }
         };
       }),
+      softDeleteTask: (projectId, taskId, deletedAt, deletedBy, permanentDeleteAt) => set((state) => ({
+        projects: state.projects.map((project) => project.id !== projectId ? project : {
+          ...project,
+          tasks: project.tasks.map((task) => task.id !== taskId ? task : {
+            ...task,
+            isDeleted: true,
+            deletedAt,
+            deletedBy,
+            permanentDeleteAt
+          })
+        })
+      })),
       reorderTask: (projectId, activeId, overId) => set((state) => ({
         projects: state.projects.map((project) => {
           if (project.id !== projectId) return project;
@@ -226,7 +239,19 @@ export const useAppStore = create<AppStore>()(
       restoreTask: (projectId, taskId) => set((state) => ({
         projects: state.projects.map((project) => project.id !== projectId ? project : {
           ...project,
-          tasks: project.tasks.map((task) => task.id !== taskId ? task : { ...task, isCompleted: false, completedAt: undefined, completedBy: undefined })
+          tasks: project.tasks
+            .map((task) => task.id !== taskId ? task : {
+              ...task,
+              isCompleted: false,
+              completedAt: undefined,
+              completedBy: undefined,
+              isDeleted: false,
+              deletedAt: undefined,
+              deletedBy: undefined,
+              deletedByName: undefined,
+              permanentDeleteAt: undefined
+            })
+            .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.sortOrder - b.sortOrder)
         })
       })),
       replaceProjectFromImport: (project) => set((state) => ({
@@ -315,7 +340,8 @@ function blankTask(sortOrder: number): Task {
     assumptions: "",
     documentLink: "",
     sortOrder,
-    isCompleted: false
+    isCompleted: false,
+    isDeleted: false
   };
 }
 

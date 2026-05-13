@@ -43,7 +43,12 @@ function task(
     sortOrder,
     isCompleted: overrides.isCompleted ?? false,
     completedAt: overrides.completedAt,
-    completedBy: overrides.completedBy
+    completedBy: overrides.completedBy,
+    isDeleted: overrides.isDeleted ?? false,
+    deletedAt: overrides.deletedAt,
+    deletedBy: overrides.deletedBy,
+    deletedByName: overrides.deletedByName,
+    permanentDeleteAt: overrides.permanentDeleteAt
   };
 }
 
@@ -205,7 +210,7 @@ export const initialState: AppState = {
   valueMode: "crew",
   granularity: "week",
   showDataLabels: false,
-  companyMaxCapacity: 90,
+  companyMaxCapacity: 0,
   scheduleGranularity: "week",
   selectedScheduleTaskId: "",
   crewDisplayMode: "detailed",

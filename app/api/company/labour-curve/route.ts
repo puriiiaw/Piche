@@ -23,7 +23,7 @@ export async function GET(request: Request) {
         ...(area !== "all" ? { area } : {})
       },
       include: {
-        tasks: { include: { allocations: true }, orderBy: { sortOrder: "asc" } },
+        tasks: { where: { isDeleted: false }, include: { allocations: true }, orderBy: { sortOrder: "asc" } },
         scheduleImports: true
       },
       orderBy: { name: "asc" }

@@ -33,7 +33,9 @@ export function taskSeverity(task: Task, project: Project, scenarioCapacity?: nu
 }
 
 export function projectTotalHours(project: Project): number {
-  return project.tasks.reduce((sum, task) => sum + taskLabourHours(task), 0);
+  return project.tasks
+    .filter((task) => !task.isDeleted)
+    .reduce((sum, task) => sum + taskLabourHours(task), 0);
 }
 
 export function effectiveTaskHours(task: Task, project: Project, crewTypeIds: string[]): number {
@@ -53,7 +55,7 @@ export function aggregateProject(
 ): PeriodPoint[] {
   const dailyTotals = new Map<string, { date: Date; hours: number; crew: number }>();
 
-  project.tasks.forEach((task) => {
+  project.tasks.filter((task) => !task.isDeleted).forEach((task) => {
     const days = taskWorkingDays(task);
     const filteredDays = filterDates(days, range);
     const hours = effectiveTaskHours(task, project, crewTypeIds);

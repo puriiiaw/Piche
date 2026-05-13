@@ -39,6 +39,19 @@ export function DashboardView() {
   const [selectedWeek, setSelectedWeek] = useState<SelectedWeek | null>(null);
   const [exporting, setExporting] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/settings/company-max")
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (!cancelled && payload && Number.isFinite(Number(payload.value))) {
+          state.setField("companyMaxCapacity", Number(payload.value));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const visibleProjects = useMemo(() => {
     if (state.role === "vp" || state.role === "admin") return state.projects;
     const assigned = new Set(state.currentUserAssignedProjectIds);
@@ -72,7 +85,7 @@ export function DashboardView() {
 
   // Completion stats computed client-side from store (no extra API call needed)
   const completedHours = useMemo(() =>
-    selectedProjects.reduce((sum, p) => sum + p.tasks.filter((t) => t.isCompleted).reduce((s, t) => s + t.totalLabourHours, 0), 0),
+    selectedProjects.reduce((sum, p) => sum + p.tasks.filter((t) => t.isCompleted && !t.isDeleted).reduce((s, t) => s + t.totalLabourHours, 0), 0),
     [selectedProjects]
   );
   const totalHoursAll = useMemo(() =>
@@ -321,6 +334,7 @@ function WeekDrawer({
     const result: { projectName: string; taskId: string; taskName: string; crew: number }[] = [];
     for (const project of projects) {
       for (const task of project.tasks) {
+        if (task.isDeleted) continue;
         if (task.endDate >= week.startIso && task.startDate <= week.endIso) {
           const crew = taskAverageCrew(task, project);
           if (crew > 0) {
@@ -337,6 +351,7 @@ function WeekDrawer({
     const totals: Record<string, number> = {};
     for (const project of projects) {
       for (const task of project.tasks) {
+        if (task.isDeleted) continue;
         if (task.endDate >= week.startIso && task.startDate <= week.endIso) {
           const crewForTask = taskAverageCrew(task, project);
           const totalAlloc = Object.values(task.crewAllocation).reduce((sum, v) => sum + v, 0);
@@ -449,6 +464,20 @@ function useDashboardData(url: string) {
 
 function DashboardControls({ visibleProjects }: { visibleProjects: Project[] }) {
   const state = useAppStore();
+  const [companyMaxSaved, setCompanyMaxSaved] = useState(false);
+
+  const saveCompanyMax = async () => {
+    if (state.role !== "admin") return;
+    const response = await fetch("/settings/company-max", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: state.companyMaxCapacity })
+    });
+    if (!response.ok) return;
+    setCompanyMaxSaved(true);
+    setTimeout(() => setCompanyMaxSaved(false), 2000);
+  };
+
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -490,8 +519,16 @@ function DashboardControls({ visibleProjects }: { visibleProjects: Project[] }) 
         />
         {(state.role === "vp" || state.role === "admin") ? (
           <label className="field">
-            <span>Company Max</span>
-            <input type="number" value={state.companyMaxCapacity} onChange={(event) => state.setField("companyMaxCapacity", Number(event.target.value || 0))} />
+            <span className="flex items-center gap-2">
+              Company Max
+              {companyMaxSaved ? <CheckCircle2 size={14} className="text-emerald-600" /> : null}
+            </span>
+            <input
+              type="number"
+              value={state.companyMaxCapacity}
+              onChange={(event) => state.setField("companyMaxCapacity", Number(event.target.value || 0))}
+              onBlur={saveCompanyMax}
+            />
           </label>
         ) : null}
       </div>

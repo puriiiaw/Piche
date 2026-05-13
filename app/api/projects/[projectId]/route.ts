@@ -42,7 +42,7 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
         ...(body.maxAvailableWorkers !== undefined && { maxAvailableWorkers: Number(body.maxAvailableWorkers) })
       },
       include: {
-        tasks: { include: { allocations: true }, orderBy: { sortOrder: "asc" } },
+        tasks: { include: { allocations: true, deletedByUser: { select: { name: true, username: true } } }, orderBy: { sortOrder: "asc" } },
         scheduleImports: { orderBy: { importedAt: "desc" } }
       }
     });

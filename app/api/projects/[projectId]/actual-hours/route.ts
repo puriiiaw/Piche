@@ -68,7 +68,7 @@ export async function GET(
       orderBy: { month: "asc" }
     }),
     db.task.findMany({
-      where: { projectId: params.projectId, isCompleted: false },
+      where: { projectId: params.projectId, isCompleted: false, isDeleted: false },
       select: { startDate: true, endDate: true, totalLabourHours: true }
     })
   ]);

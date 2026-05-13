@@ -35,7 +35,15 @@ export async function PATCH(_request: Request, { params }: { params: { projectId
   try {
     await getDb().task.update({
       where: { id: realId },
-      data: { isCompleted: false, completedAt: null, completedBy: null }
+      data: {
+        isCompleted: false,
+        completedAt: null,
+        completedBy: null,
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        permanentDeleteAt: null
+      }
     });
     return NextResponse.json({ ok: true });
   } catch (error) {

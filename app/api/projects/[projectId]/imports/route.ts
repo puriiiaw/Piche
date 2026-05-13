@@ -89,7 +89,7 @@ async function computeDiff(request: Request, projectId: string) {
   const db = getDb();
   const project = await db.project.findUnique({
     where: { id: projectId },
-    include: { tasks: { include: { allocations: true } } }
+    include: { tasks: { include: { allocations: true, deletedByUser: true } } }
   });
   if (!project) return NextResponse.json({ error: "Project not found." }, { status: 404 });
 
@@ -99,7 +99,7 @@ async function computeDiff(request: Request, projectId: string) {
   }
 
   // Build lookup: displayId → DB task (only active / non-completed tasks)
-  const activeTasks = project.tasks.filter(t => !t.isCompleted);
+  const activeTasks = project.tasks.filter(t => !t.isCompleted && !t.isDeleted);
   const dbById = new Map(activeTasks.map(t => [displayTaskId(projectId, t.id), t]));
 
   // Task IDs present in file
@@ -194,7 +194,7 @@ async function applyImport(request: Request, projectId: string) {
   const project = await db.project.findUnique({
     where: { id: projectId },
     include: {
-      tasks: { include: { allocations: true }, orderBy: { sortOrder: "asc" } },
+      tasks: { include: { allocations: true, deletedByUser: true }, orderBy: { sortOrder: "asc" } },
       scheduleImports: { orderBy: { importedAt: "desc" } }
     }
   });
@@ -212,7 +212,7 @@ async function applyImport(request: Request, projectId: string) {
   const importedAt = new Date();
 
   // Build DB task lookup by display ID (active tasks only)
-  const activeTasks = project.tasks.filter(t => !t.isCompleted);
+  const activeTasks = project.tasks.filter(t => !t.isCompleted && !t.isDeleted);
   const dbById = new Map(activeTasks.map(t => [displayTaskId(projectId, t.id), t]));
 
   // ── 1. Create new tasks ────────────────────────────────────────────────────
@@ -332,7 +332,7 @@ async function applyImport(request: Request, projectId: string) {
   const refreshed = await db.project.findUnique({
     where: { id: projectId },
     include: {
-      tasks:           { include: { allocations: true }, orderBy: { sortOrder: "asc" } },
+      tasks:           { include: { allocations: true, deletedByUser: true }, orderBy: { sortOrder: "asc" } },
       scheduleImports: { orderBy: { importedAt: "desc" } }
     }
   });

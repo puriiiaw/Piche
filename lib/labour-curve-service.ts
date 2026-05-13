@@ -64,7 +64,7 @@ export function buildCompanyLabourCurvePayload({
   // Chart data respects the task filter
   const chartProjects = taskFilter === "all" ? projects : projects.map((p) => ({
     ...p,
-    tasks: p.tasks.filter((t) => taskFilter === "remaining" ? !t.isCompleted : t.isCompleted)
+    tasks: p.tasks.filter((t) => !t.isDeleted && (taskFilter === "remaining" ? !t.isCompleted : t.isCompleted))
   }));
   const chartData = buildChartData(chartProjects, granularity, valueMode, crewTypeIds, range, capacity);
 
@@ -150,7 +150,11 @@ export function prismaProjectToAppProject(project: DbProject): Project {
       sortOrder: task.sortOrder,
       isCompleted: task.isCompleted,
       completedAt: task.completedAt ? task.completedAt.toISOString() : undefined,
-      completedBy: task.completedBy || undefined
+      completedBy: task.completedBy || undefined,
+      isDeleted: task.isDeleted,
+      deletedAt: task.deletedAt ? task.deletedAt.toISOString() : undefined,
+      deletedBy: task.deletedBy || undefined,
+      permanentDeleteAt: task.permanentDeleteAt ? task.permanentDeleteAt.toISOString() : undefined
     }))
   };
 }

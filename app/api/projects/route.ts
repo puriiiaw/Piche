@@ -11,10 +11,11 @@ export async function GET() {
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const db = getDb();
+  await cleanupExpiredDeletedTasks();
   const [projects, pmUsers] = await Promise.all([
     db.project.findMany({
       include: {
-        tasks: { include: { allocations: true }, orderBy: { sortOrder: "asc" } },
+        tasks: { include: { allocations: true, deletedByUser: { select: { name: true, username: true } } }, orderBy: { sortOrder: "asc" } },
         scheduleImports: { orderBy: { importedAt: "desc" } }
       },
       orderBy: { createdAt: "asc" }
@@ -24,6 +25,25 @@ export async function GET() {
 
   const managers = pmUsers.map((m) => ({ id: m.id, name: m.name, email: m.email }));
   return NextResponse.json({ projects: projects.map(serializeProject), managers });
+}
+
+async function cleanupExpiredDeletedTasks() {
+  const db = getDb();
+  const expired = await db.task.findMany({
+    where: { isDeleted: true, permanentDeleteAt: { lt: new Date() } },
+    select: { id: true, projectId: true }
+  });
+  if (!expired.length) return;
+
+  const result = await db.task.deleteMany({ where: { id: { in: expired.map((task) => task.id) } } });
+  await db.auditEvent.create({
+    data: {
+      action: "PERMANENT_DELETE_EXPIRED_TASKS",
+      entity: "Task",
+      entityId: "daily-cleanup",
+      after: { deletedCount: result.count, taskIds: expired.map((task) => task.id) }
+    }
+  });
 }
 
 export async function POST(request: Request) {
@@ -54,7 +74,7 @@ export async function POST(request: Request) {
         maxAvailableWorkers: Number(body.maxAvailableWorkers || 0)
       },
       include: {
-        tasks: { include: { allocations: true }, orderBy: { sortOrder: "asc" } },
+        tasks: { include: { allocations: true, deletedByUser: { select: { name: true, username: true } } }, orderBy: { sortOrder: "asc" } },
         scheduleImports: { orderBy: { importedAt: "desc" } }
       }
     });

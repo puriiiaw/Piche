@@ -50,6 +50,11 @@ export type Task = {
   isCompleted: boolean;
   completedAt?: string;
   completedBy?: string;
+  isDeleted: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  deletedByName?: string;
+  permanentDeleteAt?: string;
 };
 
 export type ScheduleImport = {

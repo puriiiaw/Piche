@@ -1,7 +1,7 @@
-import type { CrewAllocation as PrismaCrewAllocation, Project as PrismaProject, ScheduleImport as PrismaScheduleImport, Task as PrismaTask } from "@prisma/client";
+import type { CrewAllocation as PrismaCrewAllocation, Project as PrismaProject, ScheduleImport as PrismaScheduleImport, Task as PrismaTask, User as PrismaUser } from "@prisma/client";
 import type { Project } from "@/lib/types";
 
-type DbTask = PrismaTask & { allocations: PrismaCrewAllocation[] };
+type DbTask = PrismaTask & { allocations: PrismaCrewAllocation[]; deletedByUser?: Pick<PrismaUser, "name" | "username"> | null };
 export type DbProject = PrismaProject & { tasks: DbTask[]; scheduleImports: PrismaScheduleImport[] };
 
 export function serializeProject(project: DbProject): Project {
@@ -37,7 +37,12 @@ export function serializeProject(project: DbProject): Project {
       sortOrder: task.sortOrder,
       isCompleted: task.isCompleted,
       completedAt: task.completedAt ? task.completedAt.toISOString() : undefined,
-      completedBy: task.completedBy || undefined
+      completedBy: task.completedBy || undefined,
+      isDeleted: task.isDeleted,
+      deletedAt: task.deletedAt ? task.deletedAt.toISOString() : undefined,
+      deletedBy: task.deletedBy || undefined,
+      deletedByName: task.deletedByUser?.name || task.deletedByUser?.username || undefined,
+      permanentDeleteAt: task.permanentDeleteAt ? task.permanentDeleteAt.toISOString() : undefined
     })),
     scheduleImports: project.scheduleImports.map((item) => ({
       id: item.id,

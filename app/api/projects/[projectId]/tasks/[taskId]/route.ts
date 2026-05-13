@@ -59,13 +59,31 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
 export async function DELETE(_request: Request, { params }: { params: { projectId: string; taskId: string } }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = session.user as { id: string; name?: string | null; username?: string | null };
 
   const realId = await resolveTaskId(params.projectId, params.taskId);
   if (!realId) return NextResponse.json({ error: "Task not found." }, { status: 404 });
 
   try {
-    await getDb().task.delete({ where: { id: realId } });
-    return NextResponse.json({ ok: true });
+    const deletedAt = new Date();
+    const permanentDeleteAt = new Date(deletedAt);
+    permanentDeleteAt.setDate(permanentDeleteAt.getDate() + 30);
+    await getDb().task.update({
+      where: { id: realId },
+      data: {
+        isDeleted: true,
+        deletedAt,
+        deletedBy: user.id,
+        permanentDeleteAt
+      }
+    });
+    return NextResponse.json({
+      ok: true,
+      deletedAt: deletedAt.toISOString(),
+      deletedBy: user.id,
+      deletedByName: user.name || user.username || user.id,
+      permanentDeleteAt: permanentDeleteAt.toISOString()
+    });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not delete task." }, { status: 500 });
   }
